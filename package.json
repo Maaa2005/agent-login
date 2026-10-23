@@ -1,0 +1,21 @@
+{
+  "name": "agent-login",
+  "version": "0.1.0",
+  "description": "本人の承認後に、キーチェーンのログイン情報をブラウザへ入力する Claude Code 用 MCP サーバー（Mac）",
+  "type": "module",
+  "bin": {
+    "agent-login": "bin/agent-login.mjs"
+  },
+  "scripts": {
+    "build-helper": "sh helper/build.sh",
+    "test": "node tests/acceptance.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@playwright/mcp": "0.0.83",
+    "playwright": "1.64.0-alpha-1790635538000"
+  }
+}
