@@ -2,10 +2,11 @@
 // 合成パスワードが1件も出ないこと、拒否や住所違いでは入力しないことを確かめる。
 // ブラウザは本体の Chrome を画面なしで使う。ネットには出ない（127.0.0.1 の試験用サーバーだけ）。
 import http from 'node:http';
-import { mkdtempSync, readdirSync, readFileSync, writeFileSync, statSync, unlinkSync, existsSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync, statSync, unlinkSync, existsSync, chmodSync, readlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createAgentLogin, urlAllowed } from '../src/server.mjs';
+import { createKeychain } from '../src/keychain.mjs';
 
 // 判定は英数字だけの芯（CORE）で行う。記号はどの書き方に化けても、芯はそのまま残る。
 const CORE = 'Zq7SYNTH' + Math.random().toString(36).slice(2, 10);
@@ -51,6 +52,10 @@ const pages = {
   '/home': page('<h1>ようこそ</h1>'),
   '/other': page('<h1>別の画面</h1>'),
   '/opener': page('<a href="/login" target="_blank">ログイン画面を開く</a>'),
+  '/login-2fa': page(FORM('/login-2fa')),
+  '/login-otp': page(FORM('/login-otp')),
+  '/sessions/two-factor/webauthn': page('<h1>パスキーで確認してください</h1>'),
+  '/next': page('<label>確認コード <input name="code" autocomplete="one-time-code"></label>'),
 };
 const server = http.createServer((req, res) => {
   const chunks = [];
@@ -64,6 +69,13 @@ const server = http.createServer((req, res) => {
       // わざと失敗させ、ID だけ残した画面を返す（失敗後の画面に値が残らないかを見る）。
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end(page(`<p>IDかパスワードが違います</p>${FORM()}`));
+    }
+    // 二段階認証へ進むログイン（パスキーの画面・確認コード欄のある画面）
+    if (req.method === 'POST' && (path === '/login-2fa' || path === '/login-otp')) {
+      const f = new URLSearchParams(body);
+      received.push({ path, user: f.get('user'), password: f.get('password') });
+      res.writeHead(303, { location: path === '/login-2fa' ? '/sessions/two-factor/webauthn' : '/next' });
+      return res.end();
     }
     if (req.method === 'POST' && path === '/api/login') {
       const j = JSON.parse(body);
@@ -448,8 +460,81 @@ await scenario('同時に2つ', async () => {
   const nb = await b.tool('browser_navigate', { url: `${ORIGIN}/login` });
   const out = parse(await b.tool('login', { site: 'test', reason: '受入試験' }));
   record('同時に2つ: 後から起動した方も画面を開いてログインできる', !nb?.isError && out?.status === 'submitted', JSON.stringify(out) ?? JSON.stringify(nb).slice(0, 200));
+  const pa = a.app.browser.pid(), pb = b.app.browser.pid();
+  const alive = (p) => { try { process.kill(p, 0); return true; } catch { return false; } };
+  const lockB = Number(readlinkSync(join(`${profileDir}-2`, 'SingletonLock')).split('-').pop());
+  record('同時に2つ: 窓を前に出す相手はそれぞれ自分のブラウザ', Number.isInteger(pa) && Number.isInteger(pb) && pa !== pb && alive(pa) && alive(pb) && pb === lockB, `a=${pa} b=${pb} lockB=${lockB}`);
   await b.app.close();
   record('同時に2つ: 後から起動した方は別の置き場を使う', existsSync(`${profileDir}-2`) && filesWithPw(`${profileDir}-2`).length === 0);
+});
+
+// 18. 二段階認証の画面に進んだら、窓を前に出し、本人に任せるよう AI に伝える
+await scenario('二段階認証', async () => {
+  const focused = [];
+  const s = await start({ app: { focusWindow: async (pid) => { focused.push(pid); return true; } } }); cleanup.push(s);
+  await s.tool('browser_navigate', { url: `${ORIGIN}/login-2fa` });
+  const out = parse(await s.tool('login', { site: 'test', reason: '受入試験' }));
+  record('二段階認証: パスキーの画面に進んだら窓を前に出す', out?.status === 'submitted' && out.next_step === 'two_factor' && out.window_brought_to_front === true && focused.length === 1 && /two-factor/.test(out.note ?? ''), JSON.stringify(out));
+  record('二段階認証: 返事・画面情報に平文が出ない', !hasPw(out) && !hasPw(await s.tool('browser_snapshot')));
+  await s.tool('browser_navigate', { url: `${ORIGIN}/login-otp` });
+  const otp = parse(await s.tool('login', { site: 'test', reason: '受入試験' }));
+  record('二段階認証: 確認コード欄のある画面も見分ける', otp?.next_step === 'two_factor' && focused.length === 2, JSON.stringify(otp));
+  await s.tool('browser_navigate', { url: `${ORIGIN}/login` });
+  const plain = parse(await s.tool('login', { site: 'test', reason: '受入試験' }));
+  record('対照: 二段階認証でない画面では窓を動かさない', plain?.status === 'submitted' && plain.next_step === undefined && focused.length === 2, JSON.stringify(plain));
+});
+
+// 18b. 画面なしで動かすとき（既定）は窓を前に出そうとしない
+await scenario('二段階認証・画面なし', async () => {
+  const s = await start(); cleanup.push(s);
+  await s.tool('browser_navigate', { url: `${ORIGIN}/login-2fa` });
+  const out = parse(await s.tool('login', { site: 'test', reason: '受入試験' }));
+  record('二段階認証: 画面なしでは前に出さず、そのことを返す', out?.next_step === 'two_factor' && out.window_brought_to_front === false, JSON.stringify(out));
+});
+
+// 19. 承認が通らなかったとき、理由を返す
+await scenario('失敗の理由', async () => {
+  const base = fakeCredentials();
+  const s = await start({ credentials: { ...base, async get() { return { status: 'error', message: 'keychain error -25293' }; } } }); cleanup.push(s);
+  await s.tool('browser_navigate', { url: `${ORIGIN}/login` });
+  const n = received.length;
+  const out = parse(await s.tool('login', { site: 'test', reason: '受入試験' }));
+  record('失敗の理由: キーチェーンが許可しなかったと分かる', out?.status === 'error' && out.message === 'keychain error -25293' && /常に許可/.test(out.hint ?? '') && received.length === n, JSON.stringify(out));
+  const d = await start({ credentials: fakeCredentials({ decide: async () => false }) }); cleanup.push(d);
+  await d.tool('browser_navigate', { url: `${ORIGIN}/login` });
+  const den = parse(await d.tool('login', { site: 'test', reason: '受入試験' }));
+  record('失敗の理由: 本人が断ったと分かる', den?.status === 'denied' && /cancel/.test(den.hint ?? ''), JSON.stringify(den));
+});
+
+// 20. 承認の画面が押されないまま放置されたら、鍵係を止めて時間切れを返す（偽の鍵係で確かめる）
+await scenario('承認の時間切れ', async () => {
+  const dir = mkdtempSync(join(root, 'helper-'));
+  const pidFile = join(dir, 'pid');
+  const helper = join(dir, 'fake-helper');
+  writeFileSync(helper, `#!/bin/sh
+case "$1" in
+  info) printf '{"site":"test","origin":"${ORIGIN}","user":"${USER}"}' ;;
+  get) if [ "$2" = slow ]; then echo $$ > "${pidFile}"; exec sleep 999; fi
+       printf '{"origin":"${ORIGIN}","user":"${USER}","password":"fake-ok"}' ;;
+  *) exit 64 ;;
+esac
+`);
+  chmodSync(helper, 0o755);
+  const kc = createKeychain({ helper, getTimeoutMs: 1500 });
+  const ok = await kc.get('test', ORIGIN, 'x');
+  record('時間切れ: 時間内に終われば値を受け取れる（対照）', ok.status === 'ok' && ok.password === 'fake-ok' && ok.user === USER);
+  const t0 = Date.now();
+  const slow = await kc.get('slow', ORIGIN, 'x');
+  const ms = Date.now() - t0;
+  const pid = Number(readFileSync(pidFile, 'utf8'));
+  let alive = true;
+  try { process.kill(pid, 0); } catch { alive = false; }
+  record('時間切れ: 待ち続けず時間切れを返し、鍵係を止める', slow.status === 'timeout' && ms < 5000 && !alive, `${JSON.stringify(slow)} ${ms}ms alive=${alive}`);
+  const s = await start({ credentials: { ...kc, info: async () => ({ site: 'test', origin: ORIGIN, user: USER }), get: (site, o, r) => kc.get('slow', o, r) } }); cleanup.push(s);
+  await s.tool('browser_navigate', { url: `${ORIGIN}/login` });
+  const n = received.length;
+  const out = parse(await s.tool('login', { site: 'test', reason: '受入試験' }));
+  record('時間切れ: login は時間切れと次の手を返し、何も入力しない', out?.status === 'timeout' && /again/.test(out.hint ?? '') && received.length === n, JSON.stringify(out));
 });
 
 for (const s of cleanup) await s.app.close().catch(() => {});

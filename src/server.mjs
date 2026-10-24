@@ -7,7 +7,7 @@
 import { createConnection } from '@playwright/mcp';
 import fs, { readdirSync, readFileSync, writeFileSync, statSync, mkdirSync } from 'node:fs';
 import { join, isAbsolute, resolve } from 'node:path';
-import { createBrowser } from './browser.mjs';
+import { createBrowser, focusApp } from './browser.mjs';
 
 const MASK = '********';
 
@@ -160,6 +160,32 @@ function installWriteGuard() {
 
 const isRequest = (m) => typeof m?.method === 'string' && m.id !== undefined;
 const isResponse = (m) => m && m.method === undefined && m.id !== undefined;
+// 承認が通らなかったときの理由を、本人に伝えられる言葉にする（鍵係のエラー出力は番号だけで、秘密は含まない）。
+function credentialFailure(status, message) {
+  const code = /keychain error (-?\d+)/.exec(message ?? '')?.[1];
+  const hint = {
+    denied: 'The user cancelled or failed the Touch ID / Mac password check. Ask the user before trying again.',
+    timeout: 'Nobody approved the Touch ID / keychain prompt in time, so the request was cancelled. A prompt still on screen can be dismissed; approving it does nothing. Calling login again shows a new prompt.',
+    not_registered: 'This site is not registered in the keychain. The user registers it with `agent-login add`.',
+    origin_mismatch: 'The page address differs from the registered one. Nothing was entered.',
+    caller_not_allowed: 'This server is not the one the keychain helper trusts. Reinstall agent-login.',
+  }[status] ?? ({
+    '-128': 'The user pressed Deny (拒否) on the keychain prompt.',
+    '-25293': 'macOS keychain did not allow access. Ask the user to approve the prompt with "Always Allow" (常に許可), or register the site again with `agent-login add`.',
+    '-25308': 'macOS keychain could not show its prompt (no user interaction allowed). Ask the user to unlock the Mac and try again.',
+    '-25300': 'The keychain item was not found. Register the site again with `agent-login add`.',
+  }[code] ?? 'The keychain helper failed. Show the message to the user.');
+  return { message: message ? String(message).slice(0, 200) : undefined, hint };
+}
+
+// 二段階認証（ワンタイムコード・パスキー・確認コード）の画面らしいか。外れても窓を前に出すだけなので広めに取る。
+const TWO_FACTOR_PATH = /two[-_]?factor|2fa|mfa|otp|totp|webauthn|passkey|verif|challenge|security[-_]?code/i;
+async function looksLikeTwoFactor(page, url) {
+  if (TWO_FACTOR_PATH.test(url.pathname)) return true;
+  const n = await page.locator('input[autocomplete="one-time-code"]').locator('visible=true').count().catch(() => 0);
+  return n > 0;
+}
+
 const text = (obj) => ({ content: [{ type: 'text', text: JSON.stringify(obj) }], isError: obj.status !== 'submitted' && obj.status !== 'ok' });
 
 /**
@@ -169,6 +195,7 @@ const text = (obj) => ({ content: [{ type: 'text', text: JSON.stringify(obj) }],
 export async function createAgentLogin({
   credentials, sites = {}, outputDir, profileDir, headless = false, channel = 'chrome', executablePath,
   allowInsecureHosts = false, submitWaitMs = 5000, mask = true,
+  focusWindow = headless ? null : focusApp, // 二段階認証の画面に進んだら窓を前に出す（試験では差し替える）
 } = {}) {
   if (!credentials) throw new Error('credentials is required');
   if (!outputDir) throw new Error('outputDir is required');
@@ -361,7 +388,7 @@ export async function createAgentLogin({
 
     // ここで本人に承認を求める。拒否・不一致ならパスワードはこのプロセスにも来ない。
     const cred = await credentials.get(site, origin, reason.trim().slice(0, 120));
-    if (cred.status !== 'ok') return { status: cred.status, site };
+    if (cred.status !== 'ok') return { status: cred.status, site, ...credentialFailure(cred.status, cred.message) };
     if (cred.origin && cred.origin !== origin) return { status: 'origin_mismatch', site };
     const password = cred.password;
     masker.add(password);
@@ -391,13 +418,23 @@ export async function createAgentLogin({
     }
     const after = new URL(page.url());
     const stillOnForm = (await page.locator('input[type="password"]').locator('visible=true').count().catch(() => 0)) > 0;
+    // 二段階認証は本人がその窓で行う。パスキーは窓が前に無いと気づけないので前に出す。
+    const twoFactor = submitted && await looksLikeTwoFactor(page, after);
+    let focused = false;
+    if (twoFactor && focusWindow) {
+      await page.bringToFront().catch(() => {});
+      focused = await Promise.resolve(focusWindow(browser.pid())).catch(() => false);
+    }
     return {
       status: submitted ? 'submitted' : 'error',
       site,
       origin: after.origin,
       path: after.pathname,
       password_field_still_visible: stillOnForm,
-      note: stillOnForm ? 'A password field is still shown. Login may have failed or needs another step; check with browser_snapshot.' : undefined,
+      ...(twoFactor ? { next_step: 'two_factor', window_brought_to_front: focused } : {}),
+      note: twoFactor
+        ? `The site asks for two-factor authentication. ${focused ? 'The browser window was brought to the front. ' : ''}Ask the user to finish it (passkey, code, etc.) in the agent-login browser window, then check with browser_snapshot. Do not enter codes yourself unless the user gives them.`
+        : stillOnForm ? 'A password field is still shown. Login may have failed or needs another step; check with browser_snapshot.' : undefined,
     };
   }
 

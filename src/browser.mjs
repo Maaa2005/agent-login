@@ -1,5 +1,6 @@
 // ブラウザはこの道具が起動し、Playwright MCP には同じ画面を渡す。外部から繋ぐ口は開かない。
 import { chromium } from 'playwright';
+import { execFile } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync, existsSync, readlinkSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -19,11 +20,15 @@ function disablePasswordSaving(profileDir) {
 }
 
 // Chrome は使っている置き場に SingletonLock（「機械名-番号」へのリンク）を置く。その番号のプロセスが生きていれば使用中。
-function profileInUse(dir) {
+function lockPid(dir) {
   let target;
-  try { target = readlinkSync(join(dir, 'SingletonLock')); } catch { return false; }
+  try { target = readlinkSync(join(dir, 'SingletonLock')); } catch { return null; }
   const pid = Number(target.split('-').pop());
-  if (!Number.isInteger(pid) || pid <= 0) return false;
+  return Number.isInteger(pid) && pid > 0 ? pid : null;
+}
+function profileInUse(dir) {
+  const pid = lockPid(dir);
+  if (!pid) return false;
   try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; }
 }
 
@@ -32,6 +37,7 @@ const MAX_PROFILES = 5;
 
 export function createBrowser({ profileDir, headless = false, channel = 'chrome', executablePath } = {}) {
   let current = null;
+  let usedDir = null; // 実際に使っている置き場（-2 等になることがある）
   const launch = async () => {
     if (profileDir) {
       for (let i = 1; i <= MAX_PROFILES; i++) {
@@ -39,10 +45,12 @@ export function createBrowser({ profileDir, headless = false, channel = 'chrome'
         if (profileInUse(dir)) continue;
         disablePasswordSaving(dir);
         try {
-          return await chromium.launchPersistentContext(dir, {
+          const c = await chromium.launchPersistentContext(dir, {
             headless, channel: executablePath ? undefined : channel, executablePath, viewport: null,
             args: ['--disable-features=PasswordManagerOnboarding,AutofillServerCommunication'],
           });
+          usedDir = dir;
+          return c;
         } catch (e) {
           if (profileInUse(dir)) continue; // 同時に起動した別のサーバーに先を越された
           throw e;
@@ -74,9 +82,27 @@ export function createBrowser({ profileDir, headless = false, channel = 'chrome'
       const c = await current.catch(() => null);
       return c && !c.__closed ? c : null;
     },
+    // 使っているブラウザ本体のプロセス番号（窓を前に出すため）。置き場なしで起動したときは分からない。
+    pid() {
+      return usedDir ? lockPid(usedDir) : null;
+    },
     async close() {
       const c = await this.peekContext();
       if (c) await c.close().catch(() => {});
     },
   };
+}
+
+// Mac で、指定したプロセスのブラウザを一番前に出す。前に出たかどうかを返す（失敗しても止めない）。
+export function focusApp(pid) {
+  if (process.platform !== 'darwin' || !Number.isInteger(pid) || pid <= 0) return Promise.resolve(false);
+  const js = `ObjC.import('AppKit');
+const a = $.NSRunningApplication.runningApplicationWithProcessIdentifier(${pid});
+if (a && !a.isNil()) { a.activateWithOptions($.NSApplicationActivateAllWindows); delay(0.3); }
+$.NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier`;
+  return new Promise((resolve) => {
+    execFile('osascript', ['-l', 'JavaScript', '-e', js], { timeout: 5000 }, (err, stdout) => {
+      resolve(!err && Number(String(stdout).trim()) === pid);
+    });
+  });
 }

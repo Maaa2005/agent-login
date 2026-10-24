@@ -53,7 +53,7 @@ Register a site (it asks for the username and password; the password is not show
 
 To update, or after you upgrade node, run `./install.sh` again (the installed copy keeps using the node it copied). Reinstalling rebuilds the Keychain helper, so macOS may ask once for Keychain permission on existing items.
 
-Whether Keychain items registered with the development setup (before installing) can be read by the installed form has not been tested. If the first login fails, run `agent-login remove <name>` and then `add` again.
+On the author's one Mac, Keychain items registered with the development setup (before installing) could be read by the installed form (approval, password filled, then the two-factor page). This has not been tested elsewhere. If the first login fails, run `agent-login remove <name>` and then `add` again.
 
 ### Test install
 
@@ -149,7 +149,7 @@ Checked by hand:
 
 - The Keychain helper's caller check, using server startup records with different launch forms.
 - With Codex CLI 0.163.0, the registered launch passes the check (`login_ready: true`), and it can open a browser while the Claude Code server is running.
-- A real Touch ID–approved login succeeded on GitHub from Claude Code with the development setup on 2026-10-23 (username and password submitted, then the two-factor page). Not yet done with the installed form or from Codex.
+- A real Touch ID–approved login succeeded on GitHub from Claude Code with the development setup on 2026-10-23 (username and password submitted, then the two-factor page). On 2026-10-24 it also succeeded with the installed form (Touch ID, the keychain access prompt, autofill, then the passkey in the agent-login browser window). Not yet done from Codex.
 
 ## Limitations
 
@@ -161,12 +161,13 @@ Checked by hand:
 - The install is assembled in a temporary folder you own, so it assumes no agent is running while you install.
 - The development setup lacks the installed form's protections (root ownership, signing that refuses debuggers).
 - The reason text in the approval prompt is written by the agent and may not be true.
-- Two-factor codes are entered by you.
+- Two-factor steps (codes, passkeys) are done by you. When the login reaches a two-factor page, the agent-login browser window is brought to the front (macOS, non-headless).
+- If the Touch ID or keychain prompt is not approved within 4 minutes, the request is cancelled and `timeout` is returned. A prompt left on screen can be dismissed; approving it does nothing.
+- After the Keychain helper is rebuilt (reinstall), the next approval shows a keychain access prompt. Choosing "Always Allow" stops it from appearing again.
 - Only the top-level page of a single tab is handled; login fields inside iframes are not filled.
 - Masking of files written by the browser tools does not cover every way of writing; it is supplemented by cleanup after each tool call.
 - The Keychain items themselves carry no Touch ID requirement; the Touch ID approval is shown by this tool.
 - There is no paid Apple signing; signing is done locally on the Mac you install on.
-- An end-to-end login through the installed form's Keychain helper, from Touch ID approval to login, has not been tested yet.
 
 ## License
 
