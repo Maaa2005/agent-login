@@ -31,7 +31,7 @@ cd agent-login
 3. キーチェーン係（helper）をその場で作り、同じ形で署名する。
 4. `/usr/local/bin/agent-login` から本体へのリンクを置く。そこに既に別の物があれば、何も変えずに止まる。
 
-入った後の確認（全部 PASS なら終了コード 0）:
+入った後の確認（FAIL が1つも無ければ終了コード 0。SKIP があっても 0）:
 
 ```sh
 sh tests/install-check.sh
@@ -57,7 +57,7 @@ codex mcp add agent-login -- /opt/agent-login/bin/agent-login serve            #
 
 ### 試験用に入れる
 
-管理者パスワードを使わず、持ち主も変えずに、好きな場所へ入れて動きを確かめられる。守りは本番より弱い。
+管理者パスワードを使わず、持ち主も変えずに、好きな場所（絶対パスで、最後の名前は `agent-login`。空白や記号は使えない）へ入れて動きを確かめられる。守りは本番より弱い。
 
 ```sh
 AGENT_LOGIN_TEST=1 AGENT_LOGIN_PREFIX=/private/tmp/t/agent-login AGENT_LOGIN_BINDIR=/private/tmp/t/bin ./install.sh

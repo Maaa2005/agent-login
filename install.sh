@@ -28,14 +28,20 @@ canon() {
 # ---- 事前の確認 ----
 [ "$(uname -s)" = Darwin ] || die "Mac 専用です (macOS only)"
 [ "$(id -u)" -ne 0 ] || die "sudo を付けずに実行してください。必要な所だけ管理者パスワードを聞きます (run without sudo)"
+plain() {
+  case "$1" in *[[:space:]]*|*'"'*|*'\'*|*"'"*|*'$'*|*'`'*) die "場所に空白や記号（\" ' \\ \$ \`）は使えません: $1" ;; esac
+}
 for p in "$PREFIX" "$BINDIR"; do
   case "$p" in /*) ;; *) die "場所は絶対パスで指定してください: $p" ;; esac
-  case "$p" in *[[:space:]]*|*'"'*|*'\'*|*"'"*|*'$'*|*'`'*) die "場所に空白や記号（\" ' \\ \$ \`）は使えません: $p" ;; esac
+  plain "$p"
 done
 [ "$(basename "$PREFIX")" = agent-login ] || die "入れる場所の最後は agent-login にしてください: $PREFIX"
 # 鍵係に焼き込む場所と、実際に起動する場所を一致させる。
 PREFIX="$(canon "$(dirname "$PREFIX")")/agent-login"
 BINDIR="$(canon "$BINDIR")"
+[ -n "$BINDIR" ] || die "リンクの場所に / は使えません"
+# リンクをたどった後の場所も確かめる（起動口と置く手順にそのまま書くため）。
+plain "$PREFIX"; plain "$BINDIR"
 LINK="$BINDIR/agent-login"
 # リンクは入れる場所の外に置き、このインストールが作ったリンク以外は上書きしない。
 case "$BINDIR" in "$PREFIX"|"$PREFIX"/*) die "リンクの場所を入れる場所の中にはできません: $BINDIR" ;; esac
@@ -140,21 +146,28 @@ if [ -e "$prefix" ] || [ -L "$prefix" ]; then
     echo "既にある $prefix は agent-login ではないので消しません" >&2; exit 1
   fi
 fi
-mkdir -p "$(dirname "$prefix")"
+mkdir -p "$(dirname "$prefix")" "$bindir"
+# 前に同じ番号で止まった時の残りがあれば消してから始める。
+rm -rf "$new" "$old"
 mkdir -m 755 "$new"
-# 途中で止まったら、作りかけを消し、退避した前の版を戻す。
-trap "rm -rf \"$new\"; if [ -d \"$old\" ] && [ ! -e \"$prefix\" ]; then mv \"$old\" \"$prefix\"; fi" EXIT
+# 途中で止まったら、作りかけを消し、退避した前の版を戻す（新しい版を置いた後でも、リンクまで済むまでは戻す）。
+fin=0
+undo() {
+  rm -rf "$new"
+  if [ "$fin" != 1 ] && [ -d "$old" ]; then rm -rf "$prefix"; mv "$old" "$prefix"; fi
+}
+trap undo EXIT
 trap "exit 1" HUP INT TERM
 cp -R "$stage/." "$new/"
 if [ "$test" != 1 ]; then chown -R root:wheel "$new"; fi
 chmod -R go-w,a+rX "$new"
 for f in "$new/runtime/node" "$new/app/build/agent-login-helper"; do codesign --verify --strict "$f"; done
-# 前の版は、新しい版を置けてから消す。
 if [ -e "$prefix" ]; then mv "$prefix" "$old"; fi
 mv "$new" "$prefix"
-rm -rf "$old"
-mkdir -p "$bindir"
-[ -L "$link" ] || ln -s "$want" "$link"'
+[ -L "$link" ] || ln -s "$want" "$link"
+# 前の版は、全部済んでから消す。
+fin=1
+rm -rf "$old"'
 if [ "$TEST" = 1 ]; then
   /bin/sh -c "$PLACE" sh "$ROOT" "$PREFIX" "$BINDIR" 1
 else

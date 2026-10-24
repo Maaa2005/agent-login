@@ -31,7 +31,7 @@ It asks for your administrator password once, at the end. What it does:
 3. Builds the Keychain helper on your Mac and signs it the same way.
 4. Creates a link at `/usr/local/bin/agent-login`. If something else is already there, it stops without changing anything.
 
-Check the result (exit code 0 if everything passes):
+Check the result (exit code 0 if nothing FAILs; SKIP lines still give 0):
 
 ```sh
 sh tests/install-check.sh
@@ -57,7 +57,7 @@ On the author's one Mac, Keychain items registered with the development setup (b
 
 ### Test install
 
-You can install to any location without the administrator password and without changing ownership, to try it out. Protection is weaker than a real install.
+You can install to any location (an absolute path whose last part is `agent-login`, with no spaces or special characters) without the administrator password and without changing ownership, to try it out. Protection is weaker than a real install.
 
 ```sh
 AGENT_LOGIN_TEST=1 AGENT_LOGIN_PREFIX=/private/tmp/t/agent-login AGENT_LOGIN_BINDIR=/private/tmp/t/bin ./install.sh

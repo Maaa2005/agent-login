@@ -13,26 +13,28 @@ skp()  { skip=$((skip + 1)); printf 'SKIP %s\n' "$*"; }
 
 [ -d "$P" ] || { echo "FAIL $P がありません"; exit 1; }
 # 入れる時と同じく、リンクをたどった絶対パスにそろえる（相対パスでも上の階層の確認が終わるように）。
-P=$(cd "$P" && pwd -P)
+Q=$(cd "$P" && pwd -P) || { echo "FAIL $P に入れません"; exit 1; }
+P=$Q
 NODE="$P/runtime/node" HELPER="$P/app/build/agent-login-helper" LAUNCH="$P/bin/agent-login"
 
 # 1. 持ち主と書き込み権
 if [ "$TEST" = 1 ]; then
   skp "持ち主の確認（試験用に入れた物）"
 else
-  bad=$(find "$P" \( ! -user root -o -perm +022 \) -print | head -3)
+  bad=$(find "$P" \( ! -user root -o -perm +022 \) -print 2>&1 | head -3)
   [ -z "$bad" ] && ok "中身は全部 root の持ち物で、他の人は書き込めない" || ng "root 以外か書き込める物がある: $bad"
   d=$(dirname "$P") badp=
   while [ "$d" != / ]; do
-    if [ "$(stat -f %Su "$d")" != root ] || [ -n "$(find "$d" -maxdepth 0 -perm +022)" ]; then badp="$badp $d"; fi
+    if [ "$(stat -f %Su "$d")" != root ] || [ -n "$(find "$d" -maxdepth 0 -perm +022 2>&1)" ]; then badp="$badp $d"; fi
     d=$(dirname "$d")
   done
   [ -z "$badp" ] && ok "上の階層も root の持ち物で、他の人は書き込めない" || ng "上の階層に書き換えられる所がある:$badp"
 fi
 
 # 1b. 他のユーザーも読めて起動できること（入れた時の umask に左右されていないか）
-unread=$(find "$P" \( \( -type d ! -perm -005 \) -o \( -type f ! -perm -004 \) \) -print | head -3)
-noexec=$(find "$LAUNCH" "$NODE" "$HELPER" ! -perm -001 -print)
+# find が読めずに失敗した時も、その出力で FAIL にする（2>&1）。
+unread=$(find "$P" \( \( -type d ! -perm -005 \) -o \( -type f ! -perm -004 \) \) -print 2>&1 | head -3)
+noexec=$(find "$LAUNCH" "$NODE" "$HELPER" ! -perm -001 -print 2>&1)
 [ -z "$unread$noexec" ] && ok "他のユーザーも読めて起動できる" || ng "他のユーザーが読めないか起動できない物がある: $unread $noexec"
 
 # 2. 署名（hardened runtime 付き・get-task-allow なし）
