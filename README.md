@@ -85,6 +85,8 @@ Claude Code や Codex では「github にログインして〇〇して」のよ
 
 Claude Code と Codex を同時に使うと、サーバーも2つ動く。ブラウザの保存先は1つのブラウザしか使えないので、後から起動した方は `~/.cache/agent-login/profile-2`（さらに後は -3 … -5）を使う。ログイン状態（クッキー）は保存先ごとに別になる。
 
+`~/.cache/agent-login` には、ログイン後の画面の写し・画面写真・ログ（`output/`）とブラウザのログイン状態が残る。起動のたびに本人だけが読める形（700）にそろえる。要らなくなったら `./uninstall.sh --purge` で消える。
+
 その他: `agent-login list`（登録一覧）、`agent-login remove <名前>`（削除）、`serve --headless`。`serve --executable-path <Chrome の場所>` も動くが、その起動ではキーチェーン係が値を渡さない（ログインは使えない）。
 
 ### 入力欄が自動で見つからないサイト

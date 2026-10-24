@@ -85,6 +85,8 @@ In Claude Code or Codex, ask something like "log in to github and do X". The age
 
 If you use Claude Code and Codex at the same time, two servers run. A browser profile can be used by only one browser at a time, so the server started later uses `~/.cache/agent-login/profile-2` (then -3 … -5). Login state (cookies) is separate for each profile.
 
+`~/.cache/agent-login` keeps page copies, screenshots and logs from after login (`output/`) and the browser's login state. Each start sets it to owner-only (700). `./uninstall.sh --purge` removes it when you no longer need it.
+
 Other commands: `agent-login list` (registered sites), `agent-login remove <name>` (delete), `serve --headless`. `serve --executable-path <path to Chrome>` also works, but in that mode the Keychain helper does not hand over passwords (login is unavailable).
 
 ### Sites where the form fields are not found automatically

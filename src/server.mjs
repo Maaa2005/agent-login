@@ -5,9 +5,17 @@
 //   3. 中から出てくる返事・通知と保存ファイルから、入力したパスワードを伏せ字にする。
 //   4. AI がコードを動かした住所・別の画面から開かれた画面・危ない種類の住所ではログインしない。
 import { createConnection } from '@playwright/mcp';
-import fs, { readdirSync, readFileSync, writeFileSync, statSync, mkdirSync } from 'node:fs';
+import fs, { readdirSync, readFileSync, writeFileSync, statSync, mkdirSync, chmodSync } from 'node:fs';
 import { join, isAbsolute, resolve } from 'node:path';
 import { createBrowser, focusApp } from './browser.mjs';
+
+// 置き場（ログイン後の画面の写し・ブラウザの保存先）は本人だけが読めるようにする。
+// 同じ Mac の別の利用者から見えないよう、既にある置き場も締め直し、この後に作る物も本人だけにする。
+export function keepPrivate(dir) {
+  process.umask(0o077);
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  chmodSync(dir, 0o700);
+}
 
 const MASK = '********';
 
@@ -199,7 +207,7 @@ export async function createAgentLogin({
 } = {}) {
   if (!credentials) throw new Error('credentials is required');
   if (!outputDir) throw new Error('outputDir is required');
-  mkdirSync(outputDir, { recursive: true });
+  mkdirSync(outputDir, { recursive: true, mode: 0o700 });
 
   const browser = createBrowser({ profileDir, headless, channel, executablePath });
   const masker = createMasker();

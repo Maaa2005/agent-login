@@ -2,10 +2,10 @@
 // 合成パスワードが1件も出ないこと、拒否や住所違いでは入力しないことを確かめる。
 // ブラウザは本体の Chrome を画面なしで使う。ネットには出ない（127.0.0.1 の試験用サーバーだけ）。
 import http from 'node:http';
-import { mkdtempSync, readdirSync, readFileSync, writeFileSync, statSync, unlinkSync, existsSync, chmodSync, readlinkSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync, statSync, unlinkSync, existsSync, chmodSync, readlinkSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createAgentLogin, urlAllowed } from '../src/server.mjs';
+import { createAgentLogin, urlAllowed, keepPrivate } from '../src/server.mjs';
 import { createKeychain } from '../src/keychain.mjs';
 
 // 判定は英数字だけの芯（CORE）で行う。記号はどの書き方に化けても、芯はそのまま残る。
@@ -535,6 +535,23 @@ esac
   const n = received.length;
   const out = parse(await s.tool('login', { site: 'test', reason: '受入試験' }));
   record('時間切れ: login は時間切れと次の手を返し、何も入力しない', out?.status === 'timeout' && /again/.test(out.hint ?? '') && received.length === n, JSON.stringify(out));
+});
+
+// 21. 置き場（画面の写し・ブラウザの保存先）は本人だけが読める。前の版で作られた誰でも読める置き場も締め直す。
+await scenario('置き場は本人だけ', async () => {
+  const dir = join(root, 'data-old');
+  mkdirSync(join(dir, 'output'), { recursive: true });
+  chmodSync(dir, 0o755);
+  keepPrivate(dir);
+  record('置き場: 前の版の誰でも読める置き場を本人だけに締め直す', (statSync(dir).mode & 0o777) === 0o700, (statSync(dir).mode & 0o777).toString(8));
+  const fresh = join(root, 'data-new');
+  keepPrivate(fresh);
+  const sub = join(fresh, 'output');
+  mkdirSync(sub, { recursive: true });
+  const file = join(sub, 'page.yml');
+  writeFileSync(file, 'x');
+  const modes = [fresh, sub, file].map((p) => statSync(p).mode & 0o777);
+  record('置き場: 新しく作る置き場・中のフォルダ・写しのファイルに他人の読み書きが無い', modes.every((m) => (m & 0o077) === 0), modes.map((m) => m.toString(8)).join(' '));
 });
 
 for (const s of cleanup) await s.app.close().catch(() => {});

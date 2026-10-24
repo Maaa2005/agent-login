@@ -60,7 +60,8 @@ switch (cmd) {
     process.on('SIGUSR1', () => {});
     const caller = await keychain.callerCheck().catch((e) => ({ ok: false, why: e.message }));
     console.error(caller.ok ? 'agent-login: 鍵係の確認 ok' : `agent-login: この起動では鍵を受け取れません（${caller.why}）。npm run build-helper で作り直すか、node ${process.argv[1]} serve の形で起動してください`);
-    const { createAgentLogin } = await import('../src/server.mjs');
+    const { createAgentLogin, keepPrivate } = await import('../src/server.mjs');
+    keepPrivate(dataDir);
     const { stdioTransport } = await import('../src/stdio.mjs');
     const app = await createAgentLogin({
       credentials: keychain,
