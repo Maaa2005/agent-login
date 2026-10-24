@@ -62,6 +62,7 @@ You can install to any location without the administrator password and without c
 ```sh
 AGENT_LOGIN_TEST=1 AGENT_LOGIN_PREFIX=/private/tmp/t/agent-login AGENT_LOGIN_BINDIR=/private/tmp/t/bin ./install.sh
 AGENT_LOGIN_TEST=1 sh tests/install-check.sh /private/tmp/t/agent-login
+AGENT_LOGIN_TEST=1 AGENT_LOGIN_PREFIX=/private/tmp/t/agent-login AGENT_LOGIN_BINDIR=/private/tmp/t/bin ./uninstall.sh   # removes the test install
 ```
 
 `AGENT_LOGIN_PREFIX` (install location; must end in `agent-login`) and `AGENT_LOGIN_BINDIR` (link location) also work for a real install. A real install checks that every parent directory is owned by root and not writable by others before installing.
@@ -79,13 +80,15 @@ codex mcp remove agent-login
 
 `uninstall.sh` shows the site list and waits for you to type `yes` before deleting. It refuses to delete a location that does not look like an agent-login install.
 
+Run `--purge` only after quitting every Claude Code and Codex session that uses agent-login (while they run, the browser keeps writing to that folder). If you removed the tool before deleting the Keychain passwords, install it again and then run `remove`.
+
 ## Usage
 
 In Claude Code or Codex, ask something like "log in to github and do X". The agent opens the login page with `browser_navigate` and calls `login`. A macOS approval prompt appears; read it and approve with Touch ID (or your password).
 
 If you use Claude Code and Codex at the same time, two servers run. A browser profile can be used by only one browser at a time, so the server started later uses `~/.cache/agent-login/profile-2` (then -3 … -5). Login state (cookies) is separate for each profile.
 
-`~/.cache/agent-login` keeps page copies, screenshots and logs from after login (`output/`) and the browser's login state. Each start sets it to owner-only (700). `./uninstall.sh --purge` removes it when you no longer need it.
+`~/.cache/agent-login` keeps page copies, screenshots and logs from after login (`output/`) and the browser's login state. Each start sets it to owner-only (700). `./uninstall.sh --purge` removes it when you no longer need it. `output/` is not cleaned up automatically. `remove` does not clear that site's login state (cookies). Screenshots or page copies that the AI saves under a file name it chooses go to the AI's working folder instead, and `--purge` does not remove them.
 
 Other commands: `agent-login list` (registered sites), `agent-login remove <name>` (delete), `serve --headless`. `serve --executable-path <path to Chrome>` also works, but in that mode the Keychain helper does not hand over passwords (login is unavailable).
 
@@ -103,7 +106,7 @@ Write CSS selectors in `~/.config/agent-login/sites.json` (all optional):
 
 - Playwright MCP (0.0.83) is embedded, so its browser tools work as usual. Two tools are added: `login` and `login_sites`.
 - When `login(site, reason)` is called:
-  1. It checks that exactly one tab is open, the page is https, there is exactly one password field, and the URL exactly matches the registered one.
+  1. It checks that exactly one tab is open, the page is https, there is exactly one password field, and the page's origin (the `https://host` part) matches the origin of the registered URL.
   2. It shows the macOS approval prompt (Touch ID or password). If you deny, the password is never loaded, not even into this tool.
   3. After approval it checks again that the page did not change while waiting.
   4. It fills in the username and password and submits, then clears the password field whether or not the login succeeded.
@@ -112,7 +115,7 @@ Write CSS selectors in `~/.config/agent-login/sites.json` (all optional):
 - The tool that runs arbitrary code (`browser_run_code_unsafe`) is disabled.
 - The Keychain helper reads a value only when called by the server started in the expected way. A server started with options that load other code is refused before the approval prompt appears. Running the helper directly does not show the approval prompt.
 - The server ignores SIGUSR1, the signal that attaches an inspector.
-- The browser opens only http, https and about:blank URLs (not javascript:, data:, file:, and so on).
+- URLs the AI opens with `browser_navigate` or `browser_tabs` must be http, https or about:blank (javascript:, data:, file: and so on are refused). Links and redirects inside a page are outside this check.
 - Once `browser_evaluate` has run code on an origin, `login` refuses that origin for as long as the server runs. After such code runs, the origin's Service Workers and cache are cleared.
 - `login` refuses tabs opened by another page (the opener can modify their content).
 - `login_sites` returns the site list plus whether the Keychain helper will hand over values for this server (`login_ready`). If not, it also returns the reason, so you know before any approval prompt appears.
@@ -134,7 +137,7 @@ With fnm or nvm, `command -v node` may point to a temporary location. In that ca
 
 ## Tests
 
-`npm test` uses a synthetic password (random each run) against a local test site and checks the following (48 tests):
+`npm test` uses a synthetic password (random each run) against a local test site and checks the following (61 tests):
 
 - Controls: with masking turned off, the plaintext is found in snapshots, field values, console, network bodies, console log files and saved snapshot files (proves the detector works).
 - Real runs: for a plain form, a JS-submitted form, a page that copies the value, and concurrent tool calls, zero plaintext in agent responses and files.
@@ -142,6 +145,7 @@ With fnm or nvm, `command -v node` may point to a temporary location. In that ca
 - Origins where code was run and tabs opened by another page are refused; the controls (another origin, a tab you opened) pass. javascript:, data:, file: and similar URLs are not opened.
 - `login_sites` returns `login_ready: false` and a reason when the helper would refuse the server.
 - With two servers on the same profile, the later one opens its browser in another profile, can log in, and leaves no plaintext there either.
+- The data folder (`~/.cache/agent-login`) is set to owner-only (700), and anything created in it later is owner-only too.
 
 These tests use a test helper, not the real Keychain helper. The real helper and Touch ID approval are checked by hand.
 

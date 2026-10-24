@@ -2,7 +2,7 @@
 // 合成パスワードが1件も出ないこと、拒否や住所違いでは入力しないことを確かめる。
 // ブラウザは本体の Chrome を画面なしで使う。ネットには出ない（127.0.0.1 の試験用サーバーだけ）。
 import http from 'node:http';
-import { mkdtempSync, readdirSync, readFileSync, writeFileSync, statSync, unlinkSync, existsSync, chmodSync, readlinkSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync, statSync, unlinkSync, existsSync, chmodSync, readlinkSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createAgentLogin, urlAllowed, keepPrivate } from '../src/server.mjs';
@@ -556,6 +556,7 @@ await scenario('置き場は本人だけ', async () => {
 
 for (const s of cleanup) await s.app.close().catch(() => {});
 server.close();
+rmSync(root, { recursive: true, force: true });
 const ng = results.filter((r) => !r.ok);
 console.log(`\n${results.length - ng.length}/${results.length} 合格${ng.length ? '・不合格: ' + ng.map((r) => r.name).join(' / ') : ''}`);
 process.exit(ng.length ? 1 : 0);

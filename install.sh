@@ -62,7 +62,10 @@ command -v npm >/dev/null 2>&1 || die "npm が見つかりません"
 
 NODE_FROM="${AGENT_LOGIN_NODE:-$(command -v node || true)}"
 [ -n "$NODE_FROM" ] || die "node が見つかりません。nodejs.org の Mac 版（v20 以上）を入れてください"
-NODE_FROM="$(realpath "$NODE_FROM")"
+# volta・asdf などの中継ぎではなく、本物の node の場所を node 自身に聞く（realpath が無い古い Mac でも動く）。
+NODE_FROM="$("$NODE_FROM" -p 'require("fs").realpathSync(process.execPath)' 2>/dev/null)" \
+  || die "node を起動できません: ${AGENT_LOGIN_NODE:-$(command -v node)}"
+file -b "$NODE_FROM" | grep -q '^Mach-O' || die "node の本体が見つかりません: $NODE_FROM"
 "$NODE_FROM" -e 'process.exit(+process.versions.node.split(".")[0] >= 20 ? 0 : 1)' 2>/dev/null \
   || die "この node は古すぎます（v20 以上が必要）: $NODE_FROM"
 # 署名し直した node は Mac 標準以外の部品を読めなくなる。Homebrew 版などは断る。
@@ -156,6 +159,8 @@ if [ "$TEST" = 1 ]; then
   /bin/sh -c "$PLACE" sh "$ROOT" "$PREFIX" "$BINDIR" 1
 else
   say "管理者パスワードを聞きます（置き場所を管理者の持ち物にするため）"
+  # 途中で失敗・中断しても、管理者の許可を残さない。
+  trap 'rm -rf "$STAGE"; sudo -k' EXIT
   sudo /bin/sh -c "$PLACE" sh "$ROOT" "$PREFIX" "$BINDIR" 0
   sudo -k
 fi

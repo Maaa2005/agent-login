@@ -31,7 +31,7 @@ else
 fi
 
 # 1b. 他のユーザーも読めて起動できること（入れた時の umask に左右されていないか）
-unread=$(find "$P" \( -type d ! -perm -005 \) -o \( -type f ! -perm -004 \) -print | head -3)
+unread=$(find "$P" \( \( -type d ! -perm -005 \) -o \( -type f ! -perm -004 \) \) -print | head -3)
 noexec=$(find "$LAUNCH" "$NODE" "$HELPER" ! -perm -001 -print)
 [ -z "$unread$noexec" ] && ok "他のユーザーも読めて起動できる" || ng "他のユーザーが読めないか起動できない物がある: $unread $noexec"
 
@@ -62,6 +62,9 @@ if command -v lldb >/dev/null 2>&1; then
     | grep 'macOSTaskPolicy' | grep 'is hardened' | grep "doesn't have get-task-allow" | head -1)
   if ! printf '%s' "$out" | grep -q 'Not allowed to attach'; then
     ng "node: デバッガを断らなかった: $(printf '%s' "$out" | tail -1)"
+  elif [ -z "$why" ] && [ -z "$(/usr/bin/log show --last 60s --style compact 2>/dev/null | head -2 | tail -1)" ]; then
+    # 管理者でない利用者は Mac の記録を読めない。読めない時は失敗ではなく飛ばす（読めて理由が無い時は失敗のまま）。
+    skp "node: デバッガは断った。Mac の記録を読めない（管理者でない等）ので理由の確認は飛ばす"
   elif [ -z "$why" ]; then
     ng "node: デバッガは断ったが、署名のおかげかを Mac の記録で確かめられない（判定できない）"
   else

@@ -11,6 +11,9 @@
     "build-helper": "sh helper/build.sh",
     "test": "node tests/acceptance.mjs"
   },
+  "os": [
+    "darwin"
+  ],
   "engines": {
     "node": ">=20"
   },

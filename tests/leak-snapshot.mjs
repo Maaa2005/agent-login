@@ -1,13 +1,14 @@
 // 受入試験の前段: Playwright MCP の画面情報にパスワード欄の値が出るかを合成パスワードで確かめる。
 // 使い方: node tests/leak-snapshot.mjs <@playwright/mcp の cli.js のパス>
 import { spawn } from 'node:child_process';
-import { writeFileSync, mkdtempSync, readdirSync, readFileSync, existsSync } from 'node:fs';
+import { writeFileSync, mkdtempSync, readdirSync, readFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const cli = process.argv[2];
 const FAKE = 'Zq7-fake-PASS-9xK';
 const dir = mkdtempSync(join(tmpdir(), 'agent-login-'));
+process.on('exit', () => rmSync(dir, { recursive: true, force: true }));
 const page = join(dir, 'login.html');
 writeFileSync(page, `<!doctype html><title>login</title>
 <form onsubmit="event.preventDefault();document.getElementById('err').textContent='ログインに失敗しました'">

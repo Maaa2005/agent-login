@@ -53,11 +53,19 @@ REMOVE='set -eu
 prefix=$1 bindir=$2
 link="$bindir/agent-login"
 if [ -L "$link" ] && [ "$(readlink "$link")" = "$prefix/bin/agent-login" ]; then rm -f "$link"; fi
-if [ -e "$prefix" ]; then rm -rf "$prefix"; fi'
+if [ -e "$prefix" ]; then rm -rf "$prefix"; fi
+# 入れる途中で Mac が止まった時の作りかけ・退避の残り（名前の最後が数字の物だけ）
+for x in "$prefix".new.* "$prefix".old.*; do
+  case "${x##*.}" in ""|*[!0-9]*) continue ;; esac
+  if [ -d "$x" ] && [ ! -L "$x" ]; then rm -rf "$x"; fi
+done'
 if [ "$TEST" = 1 ]; then
   /bin/sh -c "$REMOVE" sh "$PREFIX" "$BINDIR"
 else
   say "管理者パスワードを聞きます（管理者の持ち物を消すため）"
+  # 途中で失敗・中断しても、管理者の許可を残さない。
+  trap 'sudo -k' EXIT
+  trap 'exit 1' HUP INT TERM
   sudo /bin/sh -c "$REMOVE" sh "$PREFIX" "$BINDIR"
   sudo -k
 fi
