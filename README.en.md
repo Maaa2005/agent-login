@@ -122,7 +122,6 @@ Write CSS selectors in `~/.config/agent-login/sites.json` (all optional):
 - "Google Chrome が /Applications にありません": install Chrome in `/Applications`.
 - "Swift が見つかりません": install the developer tools with `xcode-select --install`.
 - The agent has no `login` tool: check the registration with `claude mcp list` / `codex mcp list`. If it is missing, redo the "Register it with your agent" step above and restart the agent.
-- When a test helper exits without reading its input (denied, or answered at once), 300 calls each do not crash the server, and a denial returns `denied`. If the values for `add` could not be fully passed to the helper, it is not reported as registered even when the helper exits 0.
 - `login_sites` returns `login_ready: false`: check that the registration points to `/opt/agent-login/bin/agent-login serve`. If you updated node, run `./install.sh` again.
 - `login` says the keychain did not allow access: press "Always Allow" in the prompt. If that does not help, run `agent-login remove <name>` and then `add` again.
 - "HOME differs" appears: a launch with HOME set to somewhere other than your usual home does not receive passwords. Launch it with your usual HOME.
@@ -165,12 +164,13 @@ With fnm or nvm, `command -v node` may point to a temporary location. In that ca
 
 ## Tests
 
-`npm test` uses a synthetic password (random each run) against a local test site and checks the following (95 tests):
+`npm test` uses a synthetic password (random each run) against a local test site and checks the following (97 tests):
 
 - Controls: with masking turned off, the plaintext is found in snapshots, field values, console, network bodies, console log files and saved snapshot files (proves the detector works).
 - Real runs: for a plain form, a JS-submitted form, a page that copies the value, and concurrent tool calls, zero plaintext in agent responses and files.
 - Refusals: nothing is filled in on denial, URL mismatch, iframe, two password fields, invalid field selectors, two tabs, http, or a page change during approval.
 - Origins where code was run and tabs opened by another page are refused; the controls (another origin, a tab you opened) pass. javascript:, data:, file: and similar URLs are not opened.
+- When a test helper exits without reading its input (denied, or answered at once), 300 calls each do not crash the server, and a denial returns `denied`. If the values for `add` could not be fully passed to the helper, it is not reported as registered even when the helper exits 0. The control: a helper that reads its input registers 300 times in a row, and a large value too, receiving exactly what was passed.
 - `login_sites` returns `login_ready: false` and a reason when the helper would refuse the server.
 - With two servers on the same profile, the later one opens its browser in another profile, can log in, and leaves no plaintext there either.
 - The data folder (`~/.cache/agent-login`) is set to owner-only (700), and anything created in it later is owner-only too.

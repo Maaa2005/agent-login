@@ -571,6 +571,25 @@ esac
   record('先に終わる: 登録の値を読まずに断られたら、落ちずに失敗を返す', /登録に失敗/.test(e1?.message ?? '') && !e1.message.includes(CORE), String(e1?.message));
   const e2 = await addErr(f);
   record('先に終わる: 値を読まずに 0 で終わっても、登録できたことにしない', /登録に失敗/.test(e2?.message ?? '') && !e2.message.includes(CORE), String(e2?.message));
+  // 対照: 値を全部読んでから 0 で終わる鍵係なら、小さい値も大きい値も登録できたことになり、渡した値がそのまま届く。
+  const reader = join(dir, 'reader-helper'), got = join(dir, 'reader-in');
+  writeFileSync(reader, `#!/bin/sh
+[ "$1" = add ] || exit 64
+cat > '${got}'
+printf '{"site":"%s"}' "$2"
+`);
+  chmodSync(reader, 0o755);
+  const rd = createKeychain({ helper: reader, getTimeoutMs: 5000 });
+  const small = { origin: ORIGIN, user: USER, password: CORE };
+  let added = 0;
+  for (let i = 0; i < N; i++) {
+    const r = await rd.add('test', small).catch(() => null);
+    if (r?.site === 'test' && readFileSync(got, 'utf8') === JSON.stringify(small)) added++;
+  }
+  record(`先に終わる: 値を読む鍵係なら${N}回とも登録でき、値がそのまま届く（対照）`, added === N, `${added}/${N}`);
+  const rb = await rd.add('test', big).catch(() => null);
+  record('先に終わる: 値を読む鍵係なら、大きい値も登録でき、値がそのまま届く（対照）', rb?.site === 'test' && readFileSync(got, 'utf8') === JSON.stringify(big), rb ? 'ok' : 'failed');
+  unlinkSync(got);
 });
 
 // 21. 置き場（画面の写し・ブラウザの保存先）は本人だけが読める。前の版で作られた誰でも読める置き場も締め直す。
