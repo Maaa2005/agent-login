@@ -593,6 +593,8 @@ await scenario('CSV から取り込む', async () => {
     brokenOut.push(msg + (added ? ` 登録 ${added}` : ''));
   }
   record('取り込み: 引用符が崩れた CSV は全体を断り、何も登録せず値も出さない', brokenOut.length === 3 && brokenOut.every((l) => l.includes('引用符が崩れています')) && P.every((p) => !brokenOut.join('\n').includes(p)), brokenOut.join(' / '));
+  const spaced = planImport(parseCsv('url,username,password\nhttps://example.com,user,a\nhttps://example.com, user ,a\n'));
+  record('取り込み: ID の前後の空白は削らず、別の ID として両方残す', spaced.items.length === 2 && spaced.items[1].user === ' user ', JSON.stringify(spaced.items.map((i) => i.user)));
   const shifted = planImport(parseCsv(`name,url,username,password\nExtra,https://x.example.com/,j,${P[0]},more\nOk,https://ok.example.com/,k,${P[2]}\n`));
   record('取り込み: 列の数が合わない行は飛ばし、一覧にも名前にも値が出ない', shifted.skipped.some((s) => s.reason.startsWith('列の数')) && shifted.items.length === 1 && shifted.items.every((i) => !P.some((p) => i.site.includes(p.toLowerCase()) || i.user.includes(p))), shifted.skipped.map((s) => s.reason).join(" / "));
   const many = 'name,url,username,password\n' + Array.from({ length: 20000 }, (_, i) => `Demo,https://example.com/,u${i},p${i}`).join('\n');
@@ -646,6 +648,8 @@ await scenario('端末の表示', async () => {
   record('幅: 文字に近い記号（™ © ↔）は1・絵文字の形を指定した字と国旗は2', ['™', '©', '↔'].every((c) => width(c) === 1) && width('❤️') === 2 && width('🇯🇵') === 2, ['™', '©', '↔', '❤️', '🇯🇵'].map(width).join(' '));
   const filler = clean('a\u1160b\u3164c\u034fd');
   record('表: 拡張の漢字（𠮷）は幅2で列がそろい、ハングルの空き字なども見える形にする', width('𠮷') === 2 && new Set(table([['𠮷', 'x'], ['ab', 'x']]).map((l) => width(l.slice(0, l.lastIndexOf('x'))))).size === 1 && filler === 'a\\u1160b\\u3164c\\u034fd', `${width('𠮷')} ${JSON.stringify(filler)}`);
+  const lone = clean('\u200d\u200cx\u200d');
+  record('表: 古い仮名（𛀀）は幅2・つなぐ相手の無い先頭の ZWJ と見えないクメール文字は見える形にする', width('𛀀') === 2 && lone === '\\u200d\\u200cx\u200d' && clean('a\u17b4') === 'a\\u17b4', JSON.stringify(lone));
   let big = null;
   try { big = table(Array.from({ length: 200000 }, (_, i) => [`s${i}`, 'https://a.example'])); } catch (e) { big = e; }
   record('表: 20万行でも止まらない', Array.isArray(big) && big.length === 200000, String(big?.message ?? ''));

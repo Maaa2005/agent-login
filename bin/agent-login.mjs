@@ -5,7 +5,7 @@
 // agent-login list | remove <site> | check | help
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { keychain } from '../src/keychain.mjs';
 import { runImport } from '../src/import.mjs';
@@ -104,6 +104,9 @@ switch (cmd) {
     const [file] = rest;
     if (!file) { console.error('使い方: agent-login import <書き出した CSV>'); process.exit(64); }
     if (!process.stdin.isTTY) { console.error('選ぶのは本人だけにするため、端末から直接動かしてください（パイプ不可）'); process.exit(64); }
+    // 大きすぎる物は読み込む前に断る（読んでから数えると、その間にメモリを使い切る）。
+    let size; try { size = statSync(file).size; } catch { console.error('CSV を読めません'); process.exit(66); }
+    if (size > 20 * 1024 * 1024) { console.error('CSV が大きすぎます（20MB まで）'); process.exit(65); }
     let bytes; try { bytes = readFileSync(file); } catch { console.error('CSV を読めません'); process.exit(66); }
     if (bytes.length > 20 * 1024 * 1024) { console.error('CSV が大きすぎます（20MB まで）'); process.exit(65); }
     // 読めない文字を置き換えて読むと、壊れたパスワードを登録してしまうので断る。

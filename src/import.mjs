@@ -78,7 +78,7 @@ export function planImport(rows, existing = []) {
     if (!password) return skip('パスワードが空');
     const url = firstHttps(get('url'));
     if (!url) return skip(get('url').trim() ? 'https の住所ではない（アプリ・http など）' : '住所が空');
-    const user = get('user').trim();
+    const user = get('user'); // 前後の空白も ID の一部として残す（削ると別の ID と重なる）
     const key = JSON.stringify([url.origin, user, password]);
     if (seen.has(key)) return skip('同じ内容が重複');
     seen.add(key);
