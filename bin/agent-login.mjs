@@ -9,7 +9,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { keychain } from '../src/keychain.mjs';
 import { runImport } from '../src/import.mjs';
-import { helpText, sitesView } from '../src/cli-view.mjs';
+import { clean, helpText, showId, sitesView } from '../src/cli-view.mjs';
 
 const [cmd, ...rest] = process.argv.slice(2);
 const configDir = join(homedir(), '.config', 'agent-login');
@@ -93,7 +93,9 @@ switch (cmd) {
     if (!site || !origin) { console.error('使い方: agent-login add <名前> <https://ログイン画面の住所>'); process.exit(64); }
     let o;
     try { o = new URL(origin).origin; } catch { console.error('住所が読めません'); process.exit(64); }
-    const user = (await ask(`${o} の ID（メールアドレス等）: `)).trim();
+    // 取り込みと同じく前後の空白も ID の一部として残す。打ち間違いに気づけるよう、ある時は知らせる。
+    const user = await ask(`${o} の ID（メールアドレス等）: `);
+    if (/^\s|\s$/.test(user)) console.error(`ID の前後に空白があります: ${clean(showId(user))}（そのまま登録します。違う時は remove して入れ直してください）`);
     const password = await askHidden('パスワード（画面には出ません）: ');
     if (!password) { console.error('パスワードが空です'); process.exit(64); }
     const r = await keychain.add(site, { origin: o, user, password });
@@ -105,7 +107,10 @@ switch (cmd) {
     if (!file) { console.error('使い方: agent-login import <書き出した CSV>'); process.exit(64); }
     if (!process.stdin.isTTY) { console.error('選ぶのは本人だけにするため、端末から直接動かしてください（パイプ不可）'); process.exit(64); }
     // 大きすぎる物は読み込む前に断る（読んでから数えると、その間にメモリを使い切る）。
-    let size; try { size = statSync(file).size; } catch { console.error('CSV を読めません'); process.exit(66); }
+    // 普通のファイルだけを読む（名前付きパイプは待ち続け、/dev/zero のような物は大きさが 0 に見える）。
+    let st; try { st = statSync(file); } catch { console.error('CSV を読めません'); process.exit(66); }
+    if (!st.isFile()) { console.error('CSV を読めません（普通のファイルではありません）'); process.exit(66); }
+    const size = st.size;
     if (size > 20 * 1024 * 1024) { console.error('CSV が大きすぎます（20MB まで）'); process.exit(65); }
     let bytes; try { bytes = readFileSync(file); } catch { console.error('CSV を読めません'); process.exit(66); }
     if (bytes.length > 20 * 1024 * 1024) { console.error('CSV が大きすぎます（20MB まで）'); process.exit(65); }

@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { createAgentLogin, urlAllowed, keepPrivate } from '../src/server.mjs';
 import { createKeychain } from '../src/keychain.mjs';
 import { parseCsv, planImport, parseSelection, runImport } from '../src/import.mjs';
-import { width, table, helpText, sitesView, clean } from '../src/cli-view.mjs';
+import { width, table, helpText, sitesView, clean, showId } from '../src/cli-view.mjs';
 
 // 判定は英数字だけの芯（CORE）で行う。記号はどの書き方に化けても、芯はそのまま残る。
 const CORE = 'Zq7SYNTH' + Math.random().toString(36).slice(2, 10);
@@ -595,6 +595,10 @@ await scenario('CSV から取り込む', async () => {
   record('取り込み: 引用符が崩れた CSV は全体を断り、何も登録せず値も出さない', brokenOut.length === 3 && brokenOut.every((l) => l.includes('引用符が崩れています')) && P.every((p) => !brokenOut.join('\n').includes(p)), brokenOut.join(' / '));
   const spaced = planImport(parseCsv('url,username,password\nhttps://example.com,user,a\nhttps://example.com, user ,a\n'));
   record('取り込み: ID の前後の空白は削らず、別の ID として両方残す', spaced.items.length === 2 && spaced.items[1].user === ' user ', JSON.stringify(spaced.items.map((i) => i.user)));
+  record('取り込み: 前後に空白がある ID と空白だけの ID は "" で囲んで見せる（空白なしの ID と見分けられる）', showId(' user ') === '" user "' && showId('user') === 'user' && showId('  ') === '"  "' && showId('') === '（ID なし）', [showId(' user '), showId('  ')].join(' '));
+  record('取り込み: " で囲まれた ID と前後に空白がある ID は違う形で見せる', showId('" user "') !== showId(' user ') && showId('" user "') === JSON.stringify('" user "'), showId('" user "'));
+  record('表: 英数字・記号・空白の後ろの ZWJ は見せ、絵文字の間の ZWJ は残す', clean(showId('\u200d ')).includes('\\u200d') && clean('ab\u200dc') === 'ab\\u200dc' && clean('👩\u200d💻') === '👩\u200d💻', clean(showId('\u200d ')));
+  record('幅: 後ろに付く結合文字は数えない（a + U+16FE4 は1）・前に付く記号の後ろの漢字は2', width('a\u{16fe4}') === 1 && width('𠮷') === 2 && width('\u0600中') === 2 && width('👩\u200d💻') === 2, `${width('a\u{16fe4}')}`);
   const shifted = planImport(parseCsv(`name,url,username,password\nExtra,https://x.example.com/,j,${P[0]},more\nOk,https://ok.example.com/,k,${P[2]}\n`));
   record('取り込み: 列の数が合わない行は飛ばし、一覧にも名前にも値が出ない', shifted.skipped.some((s) => s.reason.startsWith('列の数')) && shifted.items.length === 1 && shifted.items.every((i) => !P.some((p) => i.site.includes(p.toLowerCase()) || i.user.includes(p))), shifted.skipped.map((s) => s.reason).join(" / "));
   const many = 'name,url,username,password\n' + Array.from({ length: 20000 }, (_, i) => `Demo,https://example.com/,u${i},p${i}`).join('\n');
@@ -649,7 +653,7 @@ await scenario('端末の表示', async () => {
   const filler = clean('a\u1160b\u3164c\u034fd');
   record('表: 拡張の漢字（𠮷）は幅2で列がそろい、ハングルの空き字なども見える形にする', width('𠮷') === 2 && new Set(table([['𠮷', 'x'], ['ab', 'x']]).map((l) => width(l.slice(0, l.lastIndexOf('x'))))).size === 1 && filler === 'a\\u1160b\\u3164c\\u034fd', `${width('𠮷')} ${JSON.stringify(filler)}`);
   const lone = clean('\u200d\u200cx\u200d');
-  record('表: 古い仮名（𛀀）は幅2・つなぐ相手の無い先頭の ZWJ と見えないクメール文字は見える形にする', width('𛀀') === 2 && lone === '\\u200d\\u200cx\u200d' && clean('a\u17b4') === 'a\\u17b4', JSON.stringify(lone));
+  record('表: 古い仮名（𛀀）は幅2・つなぐ相手の無い ZWJ（先頭・英字の後ろ・続けて2つ目）と見えないクメール文字は見える形にする', width('𛀀') === 2 && lone === '\\u200d\\u200cx\\u200d' && clean('a\u17b4') === 'a\\u17b4', JSON.stringify(lone));
   let big = null;
   try { big = table(Array.from({ length: 200000 }, (_, i) => [`s${i}`, 'https://a.example'])); } catch (e) { big = e; }
   record('表: 20万行でも止まらない', Array.isArray(big) && big.length === 200000, String(big?.message ?? ''));
