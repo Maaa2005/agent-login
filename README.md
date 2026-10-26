@@ -13,7 +13,7 @@ Claude Code や Codex CLI にブラウザ作業をさせているとき、ログ
 
 必要な物:
 
-- macOS（確かめたのは macOS 26.7・Apple シリコンの1台）
+- macOS（指紋での本物のログインを確かめたのは、作者の macOS 26.7・Apple シリコンの1台だけ。自動の試験と入れる・消すは GitHub の Mac（macOS 15.7・26.6、Apple シリコンと Intel、Node 20・24）でも通る。ただしその Mac は保護機能が切ってあるため、デバッガを断るかは確かめられていない）
 - `/Applications` の Google Chrome
 - Xcode のコマンドラインツール（`xcode-select --install`）
 - Node.js v20 以上と npm（確かめたのは fnm で入れた v20.20.2 と v24.22.1。nodejs.org の Mac 版、または fnm・nvm で入れた物。Homebrew 版は使えない）

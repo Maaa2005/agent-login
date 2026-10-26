@@ -13,7 +13,7 @@ The author has reviewed and tested the security many times, but cannot say it ha
 
 Requirements:
 
-- macOS (tested only on one Apple silicon Mac running macOS 26.7)
+- macOS (a real Touch ID login was confirmed only on the author's Apple silicon Mac running macOS 26.7. Automated tests, install and uninstall also pass on GitHub's Macs: macOS 15.7 and 26.6, Apple silicon and Intel, Node 20 and 24. Those Macs have SIP disabled, so debugger refusal was not verified there)
 - Google Chrome in `/Applications`
 - Xcode Command Line Tools (`xcode-select --install`)
 - Node.js v20 or later with npm (tested with v20.20.2 and v24.22.1 installed via fnm; the macOS build from nodejs.org, or one installed with fnm or nvm; the Homebrew build is not supported)
