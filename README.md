@@ -21,7 +21,7 @@ Claude Code や Codex CLI にブラウザ作業をさせているとき、ログ
 **AI を動かしていない時に**、自分のターミナルで実行する。
 
 ```sh
-git clone <このリポジトリの URL> agent-login
+git clone https://github.com/Maaa2005/agent-login.git agent-login
 cd agent-login
 ./install.sh
 ```

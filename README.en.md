@@ -21,7 +21,7 @@ Requirements:
 Run this in your own terminal **while no AI agent is running**:
 
 ```sh
-git clone <this repository's URL> agent-login
+git clone https://github.com/Maaa2005/agent-login.git agent-login
 cd agent-login
 ./install.sh
 ```
