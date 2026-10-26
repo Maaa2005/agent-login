@@ -168,7 +168,7 @@ Checked by hand:
 - The Keychain helper's caller check, using server startup records with different launch forms.
 - With Codex CLI 0.163.0, the registered launch passes the check (`login_ready: true`), and it can open a browser while the Claude Code server is running.
 - A real Touch ID–approved login succeeded on GitHub from Claude Code with the development setup on 2026-10-23 (username and password submitted, then the two-factor page). On 2026-10-24 it also succeeded with the installed form (Touch ID, the keychain access prompt, autofill, then the passkey in the agent-login browser window). Not yet done from Codex.
-- `import` writing to the real Keychain has not been tried by hand yet.
+- On 2026-10-26 the installed `import` registered 3 entries from a CSV exported by Brave into the real Keychain. Logging in with an imported entry has not been tried yet.
 
 ## Limitations
 
