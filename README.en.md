@@ -102,7 +102,7 @@ Export your passwords as CSV from your password manager, then run this in your o
 agent-login import ~/Downloads/passwords.csv
 ```
 
-It lists the importable entries without showing any password, then asks which numbers to register (e.g. `1,3,5-7`, `all`, or empty to cancel) and asks for `yes` before writing. Only logins whose address starts with `https://` are taken (an address without it, such as `example.com`, is skipped too); app entries, non-login items such as notes and cards, http, empty passwords, duplicates and HTTP-auth entries are skipped, and existing names are never overwritten (a new name gets `-2`). A CSV with broken quotes, one that is not UTF-8, or one over 20MB is refused as a whole and nothing is registered (so that a shifted column cannot put a password into the ID field). One-time codes (TOTP) and notes in the CSV are not imported. Register only the sites you want the AI to use. Pressing Ctrl-D or Ctrl-C at a prompt ends without registering anything. If any entry fails to register, the exit code is 1. The CSV contains every password in plain text, so delete it (and empty the Trash) when you are done.
+It lists the importable entries without showing any password, then asks which numbers to register (e.g. `1,3,5-7`, `all`, or empty to cancel) and asks for `yes` before writing. Only logins with an https address are taken (an address without https, such as `example.com`, is skipped); app entries, non-login items such as notes and cards, http, empty passwords, duplicates and HTTP-auth entries are skipped, and existing names are never overwritten (a new name gets `-2`). A CSV with broken quotes, one that is not UTF-8, or one over 20MB is refused as a whole and nothing is registered (so that a shifted column cannot put a password into the ID field). One-time codes (TOTP) and notes in the CSV are not imported. Register only the sites you want the AI to use. Pressing Ctrl-D or Ctrl-C while it asks for numbers or `yes` ends without registering anything (if you stop it after registering has started, the entries done so far stay registered). If any entry fails to register, the exit code is 1. The CSV contains every password in plain text, so delete it (and empty the Trash) when you are done.
 
 The tests cover the Chrome, Firefox and Bitwarden export layouts. Other CSVs are read if the header row has a `url` (or `login_uri`) column and a `password` column.
 
@@ -127,7 +127,7 @@ Write CSS selectors in `~/.config/agent-login/sites.json` (all optional):
 - "HOME differs" appears: a launch with HOME set to somewhere other than your usual home does not receive passwords. Launch it with your usual HOME.
 - No Touch ID prompt appears: run `agent-login check` in your own terminal and see whether the prompt shows up.
 - `import` refuses the file: the quotes are broken, it is not UTF-8, it is over 20MB, the header row has no `url` and `password` columns, or it is empty. Export it again from your password manager. It also refuses to run from a pipe or another tool, so type it in your own terminal.
-- `import` skips everything: exports whose addresses do not start with `https://` cannot be imported.
+- `import` skips everything: exports whose addresses have no https cannot be imported.
 
 ## How it works
 
@@ -164,7 +164,7 @@ With fnm or nvm, `command -v node` may point to a temporary location. In that ca
 
 ## Tests
 
-`npm test` uses a synthetic password (random each run) against a local test site and checks the following (84 tests):
+`npm test` uses a synthetic password (random each run) against a local test site and checks the following (85 tests):
 
 - Controls: with masking turned off, the plaintext is found in snapshots, field values, console, network bodies, console log files and saved snapshot files (proves the detector works).
 - Real runs: for a plain form, a JS-submitted form, a page that copies the value, and concurrent tool calls, zero plaintext in agent responses and files.

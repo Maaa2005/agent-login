@@ -644,6 +644,8 @@ await scenario('端末の表示', async () => {
   const hidden = clean('a\u200bb\u00adc\u061cd\ufeffe\u2060f');
   record('表: 見えない文字（幅0の空白・ソフトハイフンなど）も見える形にする', hidden === 'a\\u200bb\\u00adc\\u061cd\\ufeffe\\u2060f', JSON.stringify(hidden));
   record('幅: 文字に近い記号（™ © ↔）は1・絵文字の形を指定した字と国旗は2', ['™', '©', '↔'].every((c) => width(c) === 1) && width('❤️') === 2 && width('🇯🇵') === 2, ['™', '©', '↔', '❤️', '🇯🇵'].map(width).join(' '));
+  const filler = clean('a\u1160b\u3164c\u034fd');
+  record('表: 拡張の漢字（𠮷）は幅2で列がそろい、ハングルの空き字なども見える形にする', width('𠮷') === 2 && new Set(table([['𠮷', 'x'], ['ab', 'x']]).map((l) => width(l.slice(0, l.lastIndexOf('x'))))).size === 1 && filler === 'a\\u1160b\\u3164c\\u034fd', `${width('𠮷')} ${JSON.stringify(filler)}`);
   let big = null;
   try { big = table(Array.from({ length: 200000 }, (_, i) => [`s${i}`, 'https://a.example'])); } catch (e) { big = e; }
   record('表: 20万行でも止まらない', Array.isArray(big) && big.length === 200000, String(big?.message ?? ''));
