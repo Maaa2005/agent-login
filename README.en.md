@@ -5,7 +5,9 @@
 An MCP server for macOS (free) that lets Claude Code or Codex CLI log in to sites while they work in a browser. When the agent reaches a login page, you approve with Touch ID, and this tool types the username and password stored in your macOS Keychain directly into the page.
 
 What it does: after your approval, it fills in the login form of a registered site, so you paste passwords into chats and config files less often.
-What it does not do: fully stop an agent that is determined to extract a password (see "Limitations" below).
+What it does not do: fully stop an agent that is determined to extract a password. The path that hands the password from the Keychain helper to the server is also not fully protected from processes running as you (see "Limitations" below).
+
+The author has reviewed and tested the security many times, but cannot say it has no holes. Use it at your own risk (no warranty, as stated in Apache-2.0).
 
 ## Install
 
@@ -14,7 +16,7 @@ Requirements:
 - macOS (tested only on one Apple silicon Mac running macOS 26.7)
 - Google Chrome in `/Applications`
 - Xcode Command Line Tools (`xcode-select --install`)
-- Node.js v20 or later with npm (the macOS build from nodejs.org, or one installed with fnm or nvm; the Homebrew build is not supported)
+- Node.js v20 or later with npm (tested with v20.20.2 and v24.22.1 installed via fnm; the macOS build from nodejs.org, or one installed with fnm or nvm; the Homebrew build is not supported)
 
 Run this in your own terminal **while no AI agent is running**:
 
@@ -100,7 +102,8 @@ Export your passwords as CSV from your password manager, then run this in your o
 agent-login import ~/Downloads/passwords.csv
 ```
 
-It lists the importable entries without showing any password, then asks which numbers to register (e.g. `1,3,5-7`, `all`, or empty to cancel) and asks for `yes` before writing. Only https logins are taken; app entries, http, empty passwords, duplicates and HTTP-auth entries are skipped, and existing names are never overwritten (a new name gets `-2`). One-time codes (TOTP) and notes in the CSV are not imported. Register only the sites you want the AI to use. The CSV contains every password in plain text, so delete it (and $1
+It lists the importable entries without showing any password, then asks which numbers to register (e.g. `1,3,5-7`, `all`, or empty to cancel) and asks for `yes` before writing. Only https logins are taken; app entries, http, empty passwords, duplicates and HTTP-auth entries are skipped, and existing names are never overwritten (a new name gets `-2`). A CSV with broken quotes, one that is not UTF-8, or one over 20MB is refused as a whole and nothing is registered (so that a shifted column cannot put a password into the ID field). One-time codes (TOTP) and notes in the CSV are not imported. Register only the sites you want the AI to use. The CSV contains every password in plain text, so delete it (and empty the Trash) when you are done.
+
 The tests cover the Chrome, Firefox and Bitwarden export layouts. Other CSVs are read if the header row has a `url` (or `login_uri`) column and a `password` column.
 
 ### Sites where the form fields are not found automatically
@@ -112,6 +115,18 @@ Write CSS selectors in `~/.config/agent-login/sites.json` (all optional):
   "github": { "username": "#login_field", "password": "#password", "submit": "input[type=submit]" }
 }
 ```
+
+## Troubleshooting
+
+- `./install.sh` stops with "Homebrew 版など" (Homebrew build): switch to the nodejs.org macOS build or a node from fnm or nvm (v20 or later), check with `node -v`, and run it again.
+- "Google Chrome が /Applications にありません": install Chrome in `/Applications`.
+- "Swift が見つかりません": install the developer tools with `xcode-select --install`.
+- The agent has no `login` tool: check the registration with `claude mcp list` / `codex mcp list`. If it is missing, redo the "Register it with your agent" step above and restart the agent.
+- `login_sites` returns `login_ready: false`: check that the registration points to `/opt/agent-login/bin/agent-login serve`. If you updated node, run `./install.sh` again.
+- `login` says the keychain did not allow access: press "Always Allow" in the prompt. If that does not help, run `agent-login remove <name>` and then `add` again.
+- "HOME differs" appears: a launch with HOME set to somewhere other than your usual home does not receive passwords. Launch it with your usual HOME.
+- No Touch ID prompt appears: run `agent-login check` in your own terminal and see whether the prompt shows up.
+- `import` refuses the file: the quotes are broken, it is not UTF-8, or it is over 20MB. Export it again from your password manager.
 
 ## How it works
 
@@ -148,7 +163,7 @@ With fnm or nvm, `command -v node` may point to a temporary location. In that ca
 
 ## Tests
 
-`npm test` uses a synthetic password (random each run) against a local test site and checks the following (77 tests):
+`npm test` uses a synthetic password (random each run) against a local test site and checks the following (82 tests):
 
 - Controls: with masking turned off, the plaintext is found in snapshots, field values, console, network bodies, console log files and saved snapshot files (proves the detector works).
 - Real runs: for a plain form, a JS-submitted form, a page that copies the value, and concurrent tool calls, zero plaintext in agent responses and files.
@@ -157,8 +172,8 @@ With fnm or nvm, `command -v node` may point to a temporary location. In that ca
 - `login_sites` returns `login_ready: false` and a reason when the helper would refuse the server.
 - With two servers on the same profile, the later one opens its browser in another profile, can log in, and leaves no plaintext there either.
 - The data folder (`~/.cache/agent-login`) is set to owner-only (700), and anything created in it later is owner-only too.
-- `import` reads Chrome, Firefox and Bitwarden CSV layouts (quotes, commas and line breaks inside fields, CRLF, BOM), skips what it should, keeps generated names within what `login` accepts, registers only the chosen numbers after `yes`, and never prints a password, even in error messages. These tests use a fake Keychain.
-- Terminal output: the help lists every command, and the list table keeps its columns aligned even with full-width headers.
+- `import` reads Chrome, Firefox and Bitwarden CSV layouts (quotes, commas and line breaks inside fields, CRLF, BOM), skips what it should, keeps generated names within what `login` accepts, registers only the chosen numbers after `yes`, and never prints a password, even in error messages. A CSV with broken quotes is refused as a whole. 20,000 entries with the same name still get distinct names. These tests use a fake Keychain.
+- Terminal output: the help lists every command, and the list table keeps its columns aligned even with full-width headers. Control characters and text-direction characters in names or IDs are shown in a visible form such as `\u001b`, emoji and combining characters are measured correctly, and 200,000 rows do not crash.
 
 These tests use a test helper, not the real Keychain helper. The real helper and Touch ID approval are checked by hand.
 

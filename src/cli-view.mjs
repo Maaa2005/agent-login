@@ -1,9 +1,18 @@
 // 端末に出す説明と一覧の形。中身を変えず、読みやすく並べるだけ。
 
-// 見た目の幅（全角は2）。名前と住所は英数字だが、ID に日本語が入る事がある。
+// 端末を動かす文字（制御文字・向きを変える文字）は \uXXXX の形で見せる。ID は CSV から来るので何が入るか分からない。
+export function clean(s) {
+  return String(s).replace(/[\u0000-\u001f\u007f-\u009f\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g,
+    (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
+}
+
+// 見た目の幅（全角と絵文字は2・結合文字は前の字に含める）。名前と住所は英数字だが、ID に日本語が入る事がある。
+const graphemes = new Intl.Segmenter();
 export function width(s) {
   let w = 0;
-  for (const ch of s) w += /[ᄀ-ᅟ⺀-꓏가-힣豈-﫿︰-﹏＀-｠￠-￦]/.test(ch) ? 2 : 1;
+  for (const { segment } of graphemes.segment(s)) {
+    w += /\p{Extended_Pictographic}|[ᄀ-ᅟ⺀-꓏가-힣豈-﫿︰-﹏＀-｠￠-￦]/u.test(segment) ? 2 : 1;
+  }
   return w;
 }
 
@@ -12,10 +21,12 @@ export function pad(s, n) {
 }
 
 // 行の配列（各行は文字の配列）を、列の幅をそろえて並べる。最後の列は詰めない。
+// 件数が多くても止まらないよう、幅は1行ずつ数える。
 export function table(rows, indent = '  ') {
-  const cols = Math.max(...rows.map((r) => r.length));
-  const w = [...Array(cols).keys()].map((i) => Math.max(...rows.map((r) => width(r[i] ?? ''))));
-  return rows.map((r) => indent + r.map((c, i) => (i < r.length - 1 ? pad(c, w[i]) : c)).join('   ').trimEnd());
+  const cells = rows.map((r) => r.map(clean));
+  const w = [];
+  for (const r of cells) r.forEach((c, i) => { w[i] = Math.max(w[i] ?? 0, width(c)); });
+  return cells.map((r) => indent + r.map((c, i) => (i < r.length - 1 ? pad(c, w[i]) : c)).join('   ').trimEnd());
 }
 
 export function helpText() {

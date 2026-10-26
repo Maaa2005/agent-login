@@ -12,23 +12,27 @@ const COLUMNS = {
 };
 
 // RFC 4180 の CSV を行の配列にする（引用符・"" ・引用符の中の改行と , ・CRLF・先頭の BOM）。
+// 引用符が崩れていたら全体を断る。崩れた所から列がずれ、パスワードの欠片が ID の欄に入るため。
 export function parseCsv(text) {
   const rows = [];
-  let row = [], field = '', quoted = false;
+  let row = [], field = '', quoted = false, closed = false, line = 1;
+  const broken = () => new Error(`CSV の ${line} 行目あたりで引用符が崩れています（何も登録していません）`);
   const s = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
   for (let i = 0; i < s.length; i++) {
     const c = s[i];
     if (quoted) {
       if (c === '"') {
-        if (s[i + 1] === '"') { field += '"'; i++; } else quoted = false;
-      } else field += c;
-    } else if (c === '"') quoted = true;
-    else if (c === ',') { row.push(field); field = ''; }
+        if (s[i + 1] === '"') { field += '"'; i++; } else { quoted = false; closed = true; }
+      } else { if (c === '\n') line++; field += c; }
+    } else if (c === ',') { row.push(field); field = ''; closed = false; }
     else if (c === '\n' || c === '\r') {
       if (c === '\r' && s[i + 1] === '\n') i++;
-      row.push(field); rows.push(row); row = []; field = '';
-    } else field += c;
+      row.push(field); rows.push(row); row = []; field = ''; closed = false; line++;
+    } else if (closed || (c === '"' && field !== '')) throw broken();
+    else if (c === '"') quoted = true;
+    else field += c;
   }
+  if (quoted) throw broken();
   if (field !== '' || row.length) { row.push(field); rows.push(row); }
   return rows.filter((r) => r.some((f) => f.trim() !== ''));
 }
@@ -61,6 +65,7 @@ export function planImport(rows, existing = []) {
   const taken = new Set(existing.map((e) => e.site.toLowerCase()));
   const knownOrigins = new Set(existing.map((e) => e.origin));
   const seen = new Set();
+  const nextNumber = new Map(); // 同じ名前の次の番号（件数が多くても遅くならないよう）
   const items = [], skipped = [];
   rows.slice(1).forEach((r, i) => {
     const line = i + 2;
@@ -80,7 +85,12 @@ export function planImport(rows, existing = []) {
 
     const base = slug(get('name')) || slug(url.hostname.replace(/^www\./, '')) || 'site';
     let site = base;
-    for (let n = 2; taken.has(site); n++) site = `${base}-${n}`;
+    if (taken.has(site)) {
+      let n = nextNumber.get(base) ?? 2;
+      while (taken.has(`${base}-${n}`)) n++;
+      site = `${base}-${n}`;
+      nextNumber.set(base, n + 1);
+    }
     if (!SITE_RULE.test(site)) return skip('名前を作れない');
     taken.add(site);
     items.push({ site, origin: url.origin, user, password, sameOrigin: knownOrigins.has(url.origin) });
@@ -122,7 +132,7 @@ export async function runImport({ text, keychain, ask, print }) {
   }
   if (!picked?.length) { print('やめました（何も登録していません）'); return { added: 0, failed: 0 }; }
   const ok = (await ask(`${picked.length} 件を登録します。よければ yes: `)).trim().toLowerCase();
-  if (ok !== 'yes' && ok !== 'y') { print('やめました（何も登録していません）'); return { added: 0, failed: 0 }; }
+  if (ok !== 'yes') { print('やめました（何も登録していません）'); return { added: 0, failed: 0 }; }
 
   let added = 0, failed = 0;
   for (const i of picked) {

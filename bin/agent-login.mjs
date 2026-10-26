@@ -98,7 +98,10 @@ switch (cmd) {
     const [file] = rest;
     if (!file) { console.error('使い方: agent-login import <書き出した CSV>'); process.exit(64); }
     if (!process.stdin.isTTY) { console.error('選ぶのは本人だけにするため、端末から直接動かしてください（パイプ不可）'); process.exit(64); }
-    let text; try { text = readFileSync(file, 'utf8'); } catch { console.error('CSV を読めません'); process.exit(66); }
+    let bytes; try { bytes = readFileSync(file); } catch { console.error('CSV を読めません'); process.exit(66); }
+    if (bytes.length > 20 * 1024 * 1024) { console.error('CSV が大きすぎます（20MB まで）'); process.exit(65); }
+    // 読めない文字を置き換えて読むと、壊れたパスワードを登録してしまうので断る。
+    let text; try { text = new TextDecoder('utf-8', { fatal: true }).decode(bytes); } catch { console.error('CSV が UTF-8 ではありません（書き出し直してください）'); process.exit(65); }
     try {
       await runImport({ text, keychain, ask, print: (s) => console.error(s) });
     } catch (e) { console.error(e.message); process.exit(65); }

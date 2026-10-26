@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { createAgentLogin, urlAllowed, keepPrivate } from '../src/server.mjs';
 import { createKeychain } from '../src/keychain.mjs';
 import { parseCsv, planImport, parseSelection, runImport } from '../src/import.mjs';
-import { width, table, helpText, sitesView } from '../src/cli-view.mjs';
+import { width, table, helpText, sitesView, clean } from '../src/cli-view.mjs';
 
 // 判定は英数字だけの芯（CORE）で行う。記号はどの書き方に化けても、芯はそのまま残る。
 const CORE = 'Zq7SYNTH' + Math.random().toString(36).slice(2, 10);
@@ -581,8 +581,25 @@ await scenario('CSV から取り込む', async () => {
     + `"https://www.mail.example.com","h","${P[2]}","",""\n"https://router.example.com","i","${P[3]}","Router",""\n`;
   const b = planImport(parseCsv(bw)), f = planImport(parseCsv(ff));
   record('取り込み: Bitwarden（複数の住所から https・メモ項目は飛ばす）と Firefox（題名なし・認証窓は飛ばす）', b.items.length === 1 && b.items[0].origin === 'https://bank.example.com' && b.skipped.length === 1 && f.items.length === 1 && f.items[0].site === 'mail-example-com' && f.skipped.length === 1, `${JSON.stringify(b.items.map((i) => i.origin))} ${JSON.stringify(f.items.map((i) => i.site))}`);
-  const shifted = planImport(parseCsv(`name,url,username,password\nBroken,https://x.example.com/,"j,${P[0]},extra\nOk,https://ok.example.com/,k,${P[1]}\n`));
-  record('取り込み: 列の数が合わない行（引用符の崩れ）は飛ばし、一覧にも名前にも値が出ない', shifted.skipped.some((s) => s.reason.startsWith('列の数')) && shifted.items.every((i) => !P.some((p) => i.site.includes(p.toLowerCase()) || i.user.includes(p))), shifted.skipped.map((s) => s.reason).join(" / "));
+  const brokenCsv = [
+    `name,url,username,password\nBroken,https://x.example.com/,"j,${P[0]},extra\nOk,https://ok.example.com/,k,${P[1]}\n`,
+    `name,url,username,password\nBroken,https://x.example.com/,j",${P[0]}",tail\n`,
+    `name,url,username,password\nBroken,https://x.example.com/,"j"x,${P[0]}\n`,
+  ];
+  const brokenOut = [];
+  for (const text of brokenCsv) {
+    let added = 0, msg = '';
+    try { await runImport({ text, keychain: { list: async () => [], add: async () => { added++; } }, ask: async () => 'all', print: (l) => brokenOut.push(l) }); } catch (e) { msg = e.message; }
+    brokenOut.push(msg + (added ? ` 登録 ${added}` : ''));
+  }
+  record('取り込み: 引用符が崩れた CSV は全体を断り、何も登録せず値も出さない', brokenOut.length === 3 && brokenOut.every((l) => l.includes('引用符が崩れています')) && P.every((p) => !brokenOut.join('\n').includes(p)), brokenOut.join(' / '));
+  const shifted = planImport(parseCsv(`name,url,username,password\nExtra,https://x.example.com/,j,${P[0]},more\nOk,https://ok.example.com/,k,${P[2]}\n`));
+  record('取り込み: 列の数が合わない行は飛ばし、一覧にも名前にも値が出ない', shifted.skipped.some((s) => s.reason.startsWith('列の数')) && shifted.items.length === 1 && shifted.items.every((i) => !P.some((p) => i.site.includes(p.toLowerCase()) || i.user.includes(p))), shifted.skipped.map((s) => s.reason).join(" / "));
+  const many = 'name,url,username,password\n' + Array.from({ length: 20000 }, (_, i) => `Demo,https://example.com/,u${i},p${i}`).join('\n');
+  const t0 = Date.now();
+  const manyPlan = planImport(parseCsv(many));
+  const ms = Date.now() - t0;
+  record('取り込み: 同じ名前が2万件でもすぐ終わり、名前は重ならない', manyPlan.items.length === 20000 && new Set(manyPlan.items.map((i) => i.site)).size === 20000 && manyPlan.items[19999].site === 'demo-20000' && ms < 2000, `${ms}ms`);
   let threw = false;
   try { planImport(parseCsv('a,b\n1,2\n')); } catch { threw = true; }
   record('取り込み: 住所とパスワードの列が無い CSV は断る', threw);
@@ -602,8 +619,8 @@ await scenario('CSV から取り込む', async () => {
   };
   const ok = await run(['x', '1,3', 'yes']);
   record('取り込み: 読めない番号は聞き直し、選んだ物だけ登録', ok.added.length === 2 && ok.added[0][0] === 'example-2' && ok.added[0][1].password === P[0] && ok.added[1][0] === 'post-example-jp' && ok.out.includes('読めませんでした'), JSON.stringify(ok.added.map((a) => a[0])));
-  const none = [await run(['']), await run(['all', 'no'])];
-  record('取り込み: 空の答え・最後の確認で yes 以外なら何も登録しない', none.every((n) => n.added.length === 0 && n.out.includes('やめました')));
+  const none = [await run(['']), await run(['all', 'no']), await run(['all', 'y'])];
+  record('取り込み: 空の答え・最後の確認で yes 以外（y も）なら何も登録しない', none.every((n) => n.added.length === 0 && n.out.includes('やめました')));
   const bad = await run(['all', 'yes'], 'shop-inc');
   record('取り込み: 登録に失敗しても続け、件数を出す', bad.r.added === 2 && bad.r.failed === 1 && bad.out.includes('登録できませんでした: shop-inc'), JSON.stringify(bad.r));
   const all = [ok, ...none, bad].map((x) => x.out).join('\n');
@@ -621,6 +638,12 @@ await scenario('端末の表示', async () => {
   const v = sitesView([{ site: 'zeta', origin: 'https://z.example' }, { site: 'alpha', origin: 'https://a.example' }]).split('\n');
   record('一覧: 件数・見出し・名前の順', v[0] === '登録 2 件' && v[1].includes('名前') && v[2].includes('alpha') && v[3].includes('zeta'), JSON.stringify(v));
   record('一覧: 空なら足し方を案内', sitesView([]).includes('add か import'));
+  const evil = table([['ID'], ['alice\u001b[2J\u0007'], ['bob\u009b31m'], ['x\u202eevil'], ['line\nbreak\r']]).join('\n');
+  record('表: 制御文字・向きを変える文字は見える形にして、そのまま出さない', !/[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u202e]/.test(evil) && evil.split('\n').length === 5 && evil.includes('alice\\u001b[2J\\u0007') && clean('a\u202eb') === 'a\\u202eb', JSON.stringify(evil));
+  record('幅: 結合文字は前の字と1つ・絵文字は2', width('e\u0301') === 1 && width('👨‍👩‍👧‍👦') === 2 && width('😀') === 2, `${width('e\u0301')} ${width('👨‍👩‍👧‍👦')} ${width('😀')}`);
+  let big = null;
+  try { big = table(Array.from({ length: 200000 }, (_, i) => [`s${i}`, 'https://a.example'])); } catch (e) { big = e; }
+  record('表: 20万行でも止まらない', Array.isArray(big) && big.length === 200000, String(big?.message ?? ''));
 });
 
 for (const s of cleanup) await s.app.close().catch(() => {});
