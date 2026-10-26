@@ -27,7 +27,18 @@ jobs:
       - name: install
         run: ./install.sh
       - name: install-check
-        run: sh tests/install-check.sh
+        # GitHub の Mac は保護機能（SIP）が切ってあり、署名で断るはずのデバッガが付けられてしまう。
+        # SIP が切れている時だけ、その1件の FAIL を許す。ほかの FAIL や、SIP が入っている Mac での FAIL は落とす。
+        run: |
+          set +e
+          sh tests/install-check.sh 2>&1 | tee /tmp/ic.log
+          rc=${PIPESTATUS[0]}
+          set -e
+          [ "$rc" = 0 ] && exit 0
+          csrutil status | grep -q 'status: disabled' || { echo "SIP が入っているのに FAIL"; exit 1; }
+          fails=$(grep -c '^FAIL' /tmp/ic.log || true)
+          [ "$fails" = 1 ] && grep -q '^FAIL node: デバッガを断らなかった' /tmp/ic.log || { echo "デバッガ以外の FAIL がある"; exit 1; }
+          echo "SIP が切れた Mac なので、デバッガの1件だけを許して通す"
       - name: uninstall
         # 消す前の yes は端末からしか読まないので、expect で端末を用意して答える。
         run: |
