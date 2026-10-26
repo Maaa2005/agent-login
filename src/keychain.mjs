@@ -11,9 +11,12 @@ export const DEFAULT_GET_TIMEOUT_MS = 240_000;
 function run(helper, args, input, timeoutMs) {
   return new Promise((resolve, reject) => {
     if (!existsSync(helper)) return reject(new Error('鍵係が未作成です。npm run build-helper を実行してください'));
-    const p = spawn(helper, args, { stdio: ['pipe', 'pipe', 'pipe'] });
+    // 入力は渡す値があるとき（add）だけつなぐ。鍵係が読む前に終わる（断った等）と書き込みが EPIPE になり、
+    // 受け取り手が無いと serve ごと落ちるので、error は受け取って結果は鍵係の終わり方で決める。
+    const p = spawn(helper, args, { stdio: [input == null ? 'ignore' : 'pipe', 'pipe', 'pipe'] });
     const out = [], err = [];
-    let timedOut = false, timer = null, killer = null;
+    let timedOut = false, timer = null, killer = null, inErr = null;
+    p.stdin?.on('error', (e) => { inErr = e; });
     if (timeoutMs > 0) {
       timer = setTimeout(() => {
         timedOut = true;
@@ -27,9 +30,14 @@ function run(helper, args, input, timeoutMs) {
     p.on('close', (code) => {
       clearTimeout(timer); clearTimeout(killer);
       if (timedOut) return resolve({ code: null, timedOut: true, stdout: '', stderr: '' });
-      resolve({ code, stdout: Buffer.concat(out).toString('utf8'), stderr: Buffer.concat(err).toString('utf8').trim() });
+      const stderr = Buffer.concat(err).toString('utf8').trim();
+      // 値を渡し切れなかったときは、0 で終わっても成功にしない。
+      if (p.stdin && (inErr || !p.stdin.writableFinished)) {
+        return resolve({ code: code === 0 ? null : code, stdout: '', stderr: stderr || `鍵係へ値を渡せませんでした（${inErr?.code ?? 'incomplete'}）` });
+      }
+      resolve({ code, stdout: Buffer.concat(out).toString('utf8'), stderr });
     });
-    p.stdin.end(input ?? '');
+    p.stdin?.end(input);
   });
 }
 

@@ -541,6 +541,38 @@ esac
   record('時間切れ: login は時間切れと次の手を返し、何も入力しない', out?.status === 'timeout' && /again/.test(out.hint ?? '') && received.length === n, JSON.stringify(out));
 });
 
+// 20b. 鍵係が入力を読まずにすぐ終わっても（断った・すぐ答えた）、ログイン係は落ちず、終わり方どおりの結果を返す。
+await scenario('鍵係が先に終わる', async () => {
+  const dir = mkdtempSync(join(root, 'helper-'));
+  const quit = join(dir, 'quit-helper'), fast = join(dir, 'fast-helper');
+  writeFileSync(quit, '#!/bin/sh\nexit 2\n');
+  writeFileSync(fast, `#!/bin/sh
+case "$1" in
+  info) printf '{"site":"test","origin":"${ORIGIN}","user":"${USER}"}' ;;
+  get) printf '{"origin":"${ORIGIN}","user":"${USER}","password":"fake-ok"}' ;;
+  add) printf '{"site":"test"}' ;;
+  *) exit 64 ;;
+esac
+`);
+  chmodSync(quit, 0o755); chmodSync(fast, 0o755);
+  const q = createKeychain({ helper: quit, getTimeoutMs: 5000 }), f = createKeychain({ helper: fast, getTimeoutMs: 5000 });
+  const N = 300;
+  let denied = 0, ok = 0;
+  for (let i = 0; i < N; i++) {
+    if ((await q.get('test', ORIGIN, 'x')).status === 'denied') denied++;
+    const r = await f.get('test', ORIGIN, 'x');
+    if (r.status === 'ok' && r.password === 'fake-ok' && (await f.info('test'))?.origin === ORIGIN) ok++;
+  }
+  record(`先に終わる: 断った鍵係を${N}回呼んでも落ちず、毎回 denied`, denied === N, `${denied}/${N}`);
+  record(`先に終わる: すぐ答える鍵係を${N}回呼んでも落ちず、毎回値を受け取る（対照）`, ok === N, `${ok}/${N}`);
+  const big = { origin: ORIGIN, user: USER, password: CORE.repeat(100_000) };
+  const addErr = async (kc) => { try { await kc.add('test', big); return null; } catch (e) { return e; } };
+  const e1 = await addErr(q);
+  record('先に終わる: 登録の値を読まずに断られたら、落ちずに失敗を返す', /登録に失敗/.test(e1?.message ?? '') && !e1.message.includes(CORE), String(e1?.message));
+  const e2 = await addErr(f);
+  record('先に終わる: 値を読まずに 0 で終わっても、登録できたことにしない', /登録に失敗/.test(e2?.message ?? '') && !e2.message.includes(CORE), String(e2?.message));
+});
+
 // 21. 置き場（画面の写し・ブラウザの保存先）は本人だけが読める。前の版で作られた誰でも読める置き場も締め直す。
 await scenario('置き場は本人だけ', async () => {
   const dir = join(root, 'data-old');
