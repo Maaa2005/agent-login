@@ -184,6 +184,8 @@ async function probe(s, { network = true } = {}) {
 const results = [];
 const record = (name, ok, detail = '') => { results.push({ name, ok, detail }); console.log(`${ok ? 'OK ' : 'NG '} ${name}${detail ? ' — ' + detail : ''}`); };
 const cleanup = [];
+// 試験では最後まで閉じない画面を10個より多く開く。開くたびに部品が process へ見張りを1つ足すので（閉じれば外れる）、その数の注意を止める。
+process.setMaxListeners(30);
 
 async function scenario(name, fn) {
   try { await fn(); } catch (e) { record(name, false, `例外: ${e?.stack?.split('\n').slice(0, 3).join(' | ') ?? e}`); }
