@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createAgentLogin, urlAllowed, keepPrivate } from '../src/server.mjs';
 import { createKeychain } from '../src/keychain.mjs';
+import { parseCsv, planImport, parseSelection, runImport } from '../src/import.mjs';
 
 // 判定は英数字だけの芯（CORE）で行う。記号はどの書き方に化けても、芯はそのまま残る。
 const CORE = 'Zq7SYNTH' + Math.random().toString(36).slice(2, 10);
@@ -552,6 +553,58 @@ await scenario('置き場は本人だけ', async () => {
   writeFileSync(file, 'x');
   const modes = [fresh, sub, file].map((p) => statSync(p).mode & 0o777);
   record('置き場: 新しく作る置き場・中のフォルダ・写しのファイルに他人の読み書きが無い', modes.every((m) => (m & 0o077) === 0), modes.map((m) => m.toString(8)).join(' '));
+});
+
+// 22. パスワード管理の書き出し（CSV）から選んで登録する。キーチェーンは偽物で、パスワードは画面に出さない。
+await scenario('CSV から取り込む', async () => {
+  const P = ['Fk1-imp-PASS-a', 'Fk2-imp,PASS"b', 'Fk3-imp-PASS-c', 'Fk4-imp-PASS-d', 'Fk5-imp-PASS-e', 'Fk6-imp-PASS-f'];
+  const chrome = '﻿name,url,username,password,note\r\n'
+    + `Example,https://example.com/login,a@example.test,${P[0]},"メモ, 改行\nあり"\r\n`
+    + `"Shop, Inc",https://shop.example.net/,b@example.test,"${P[1].replace(/"/g, '""')}",\r\n`
+    + `アプリ,android://hash@com.example/,c,${P[2]},\r\n`
+    + `Old,http://old.example.org/,d,${P[3]},\r\n`
+    + 'Empty,https://empty.example.org/,e,,\r\n'
+    + `ゆうびん,https://www.post.example.jp/,f,${P[4]},\r\n`
+    + `Example,https://example.com/login,a@example.test,${P[0]},\r\n`;
+  const rows = parseCsv(chrome);
+  record('取り込み: CSV の読み（BOM・CRLF・引用符の中の , と改行と ""）', rows.length === 8 && rows[1][4] === 'メモ, 改行\nあり' && rows[2][0] === 'Shop, Inc' && rows[2][3] === P[1], JSON.stringify(rows.map((r) => r.length)));
+  const plan = planImport(rows, [{ site: 'example', origin: 'https://example.com' }]);
+  const sites = plan.items.map((i) => i.site);
+  record('取り込み: https だけ・空と重複は飛ばす・登録済みの名前は別名・日本語だけの名前は住所から', JSON.stringify(sites) === '["example-2","shop-inc","post-example-jp"]' && plan.skipped.length === 4, `${sites} / ${plan.skipped.map((s) => s.reason)}`);
+  record('取り込み: 作る名前はログインの道具が受ける形・同じ住所の登録済みに印', plan.items.every((i) => /^[A-Za-z0-9._-]{1,64}$/.test(i.site)) && plan.items[0].sameOrigin && !plan.items[1].sameOrigin);
+
+  const bw = 'folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp\n'
+    + `,,login,Bank,,,,"androidapp://com.bank,https://bank.example.com/signin",g,${P[5]},otpauth://x\n`
+    + ',,note,Memo,秘密のメモ,,,,,,\n';
+  const ff = '"url","username","password","httpRealm","formActionOrigin"\n'
+    + `"https://www.mail.example.com","h","${P[2]}","",""\n"https://router.example.com","i","${P[3]}","Router",""\n`;
+  const b = planImport(parseCsv(bw)), f = planImport(parseCsv(ff));
+  record('取り込み: Bitwarden（複数の住所から https・メモ項目は飛ばす）と Firefox（題名なし・認証窓は飛ばす）', b.items.length === 1 && b.items[0].origin === 'https://bank.example.com' && b.skipped.length === 1 && f.items.length === 1 && f.items[0].site === 'mail-example-com' && f.skipped.length === 1, `${JSON.stringify(b.items.map((i) => i.origin))} ${JSON.stringify(f.items.map((i) => i.site))}`);
+  let threw = false;
+  try { planImport(parseCsv('a,b\n1,2\n')); } catch { threw = true; }
+  record('取り込み: 住所とパスワードの列が無い CSV は断る', threw);
+
+  const sel = [['', 3], ['all', 3], ['1, 3', 3], ['2-3', 3], ['0', 3], ['4', 3], ['3-2', 3], ['x', 3]].map(([a, n]) => JSON.stringify(parseSelection(a, n)));
+  record('取り込み: 番号の読み（空=やめる・all・範囲・範囲外や読めない物は断る）', sel.join(' ') === '[] [0,1,2] [0,2] [1,2] null null null null', sel.join(' '));
+
+  const run = async (answers, failOn) => {
+    const out = [], added = [];
+    const kc = {
+      list: async () => [{ site: 'example', origin: 'https://example.com' }],
+      add: async (site, v) => { if (site === failOn) throw new Error(`failed with ${v.password}`); added.push([site, v]); return { site, origin: v.origin }; },
+    };
+    const q = [...answers];
+    const r = await runImport({ text: chrome, keychain: kc, ask: async (s) => { out.push(s); return q.shift() ?? ''; }, print: (s) => out.push(s) });
+    return { r, out: out.join('\n'), added };
+  };
+  const ok = await run(['x', '1,3', 'yes']);
+  record('取り込み: 読めない番号は聞き直し、選んだ物だけ登録', ok.added.length === 2 && ok.added[0][0] === 'example-2' && ok.added[0][1].password === P[0] && ok.added[1][0] === 'post-example-jp' && ok.out.includes('読めませんでした'), JSON.stringify(ok.added.map((a) => a[0])));
+  const none = [await run(['']), await run(['all', 'no'])];
+  record('取り込み: 空の答え・最後の確認で yes 以外なら何も登録しない', none.every((n) => n.added.length === 0 && n.out.includes('やめました')));
+  const bad = await run(['all', 'yes'], 'shop-inc');
+  record('取り込み: 登録に失敗しても続け、件数を出す', bad.r.added === 2 && bad.r.failed === 1 && bad.out.includes('登録できませんでした: shop-inc'), JSON.stringify(bad.r));
+  const all = [ok, ...none, bad].map((x) => x.out).join('\n');
+  record('取り込み: 一覧・飛ばした理由・失敗の知らせのどこにもパスワードが出ない', P.every((p) => !all.includes(p)));
 });
 
 for (const s of cleanup) await s.app.close().catch(() => {});

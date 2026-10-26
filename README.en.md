@@ -92,6 +92,16 @@ If you use Claude Code and Codex at the same time, two servers run. A browser pr
 
 Other commands: `agent-login list` (registered sites), `agent-login remove <name>` (delete), `serve --headless`. `serve --executable-path <path to Chrome>` also works, but in that mode the Keychain helper does not hand over passwords (login is unavailable).
 
+### Importing from a password manager
+
+Export your passwords as CSV from Chrome / Brave / Edge, Firefox, Safari / the Passwords app, 1Password or Bitwarden, then run this in your own terminal (it refuses piped input, so an AI cannot pick for you):
+
+```sh
+agent-login import ~/Downloads/passwords.csv
+```
+
+It lists the importable entries without showing any password, then asks which numbers to register (e.g. `1,3,5-7`, `all`, or empty to cancel) and asks for `yes` before writing. Only https logins are taken; app entries, http, empty passwords, duplicates and HTTP-auth entries are skipped, and existing names are never overwritten (a new name gets `-2`). One-time codes (TOTP) and notes in the CSV are not imported. Register only the sites you want the AI to use. The CSV contains every password in plain text, so delete it (and empty the Trash) when you are done.
+
 ### Sites where the form fields are not found automatically
 
 Write CSS selectors in `~/.config/agent-login/sites.json` (all optional):
@@ -137,7 +147,7 @@ With fnm or nvm, `command -v node` may point to a temporary location. In that ca
 
 ## Tests
 
-`npm test` uses a synthetic password (random each run) against a local test site and checks the following (61 tests):
+`npm test` uses a synthetic password (random each run) against a local test site and checks the following (71 tests):
 
 - Controls: with masking turned off, the plaintext is found in snapshots, field values, console, network bodies, console log files and saved snapshot files (proves the detector works).
 - Real runs: for a plain form, a JS-submitted form, a page that copies the value, and concurrent tool calls, zero plaintext in agent responses and files.
@@ -146,6 +156,7 @@ With fnm or nvm, `command -v node` may point to a temporary location. In that ca
 - `login_sites` returns `login_ready: false` and a reason when the helper would refuse the server.
 - With two servers on the same profile, the later one opens its browser in another profile, can log in, and leaves no plaintext there either.
 - The data folder (`~/.cache/agent-login`) is set to owner-only (700), and anything created in it later is owner-only too.
+- `import` reads Chrome, Firefox and Bitwarden CSV layouts (quotes, commas and line breaks inside fields, CRLF, BOM), skips what it should, keeps generated names within what `login` accepts, registers only the chosen numbers after `yes`, and never prints a password, even in error messages. These tests use a fake Keychain.
 
 These tests use a test helper, not the real Keychain helper. The real helper and Touch ID approval are checked by hand.
 
@@ -156,6 +167,7 @@ Checked by hand:
 - The Keychain helper's caller check, using server startup records with different launch forms.
 - With Codex CLI 0.163.0, the registered launch passes the check (`login_ready: true`), and it can open a browser while the Claude Code server is running.
 - A real Touch ID–approved login succeeded on GitHub from Claude Code with the development setup on 2026-10-23 (username and password submitted, then the two-factor page). On 2026-10-24 it also succeeded with the installed form (Touch ID, the keychain access prompt, autofill, then the passkey in the agent-login browser window). Not yet done from Codex.
+- `import` writing to the real Keychain has not been tried by hand yet.
 
 ## Limitations
 
