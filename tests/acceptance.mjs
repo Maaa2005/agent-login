@@ -641,6 +641,9 @@ await scenario('端末の表示', async () => {
   const evil = table([['ID'], ['alice\u001b[2J\u0007'], ['bob\u009b31m'], ['x\u202eevil'], ['line\nbreak\r']]).join('\n');
   record('表: 制御文字・向きを変える文字は見える形にして、そのまま出さない', !/[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u202e]/.test(evil) && evil.split('\n').length === 5 && evil.includes('alice\\u001b[2J\\u0007') && clean('a\u202eb') === 'a\\u202eb', JSON.stringify(evil));
   record('幅: 結合文字は前の字と1つ・絵文字は2', width('e\u0301') === 1 && width('👨‍👩‍👧‍👦') === 2 && width('😀') === 2, `${width('e\u0301')} ${width('👨‍👩‍👧‍👦')} ${width('😀')}`);
+  const hidden = clean('a\u200bb\u00adc\u061cd\ufeffe\u2060f');
+  record('表: 見えない文字（幅0の空白・ソフトハイフンなど）も見える形にする', hidden === 'a\\u200bb\\u00adc\\u061cd\\ufeffe\\u2060f', JSON.stringify(hidden));
+  record('幅: 文字に近い記号（™ © ↔）は1・絵文字の形を指定した字と国旗は2', ['™', '©', '↔'].every((c) => width(c) === 1) && width('❤️') === 2 && width('🇯🇵') === 2, ['™', '©', '↔', '❤️', '🇯🇵'].map(width).join(' '));
   let big = null;
   try { big = table(Array.from({ length: 200000 }, (_, i) => [`s${i}`, 'https://a.example'])); } catch (e) { big = e; }
   record('表: 20万行でも止まらない', Array.isArray(big) && big.length === 200000, String(big?.message ?? ''));

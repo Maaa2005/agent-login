@@ -21,9 +21,15 @@ function loadSites() {
   return JSON.parse(readFileSync(file, 'utf8'));
 }
 
+// Ctrl-D は空の答え（=やめる）、Ctrl-C は何もせず終える。
 function ask(question) {
   const rl = createInterface({ input: process.stdin, output: process.stderr });
-  return new Promise((res) => rl.question(question, (a) => { rl.close(); res(a); }));
+  return new Promise((res) => {
+    let answered = false;
+    rl.on('SIGINT', () => { process.stderr.write('\nやめました（何も登録していません）\n'); process.exit(130); });
+    rl.on('close', () => { if (!answered) { process.stderr.write('\n'); res(''); } });
+    rl.question(question, (a) => { answered = true; rl.close(); res(a); });
+  });
 }
 
 // 入力を画面に出さずに1行読む。
@@ -102,10 +108,12 @@ switch (cmd) {
     if (bytes.length > 20 * 1024 * 1024) { console.error('CSV が大きすぎます（20MB まで）'); process.exit(65); }
     // 読めない文字を置き換えて読むと、壊れたパスワードを登録してしまうので断る。
     let text; try { text = new TextDecoder('utf-8', { fatal: true }).decode(bytes); } catch { console.error('CSV が UTF-8 ではありません（書き出し直してください）'); process.exit(65); }
+    let result;
     try {
-      await runImport({ text, keychain, ask, print: (s) => console.error(s) });
+      result = await runImport({ text, keychain, ask, print: (s) => console.error(s) });
     } catch (e) { console.error(e.message); process.exit(65); }
     console.error('CSV にはパスワードがそのまま入っています。終わったら消して、ゴミ箱も空にしてください');
+    if (result.failed) process.exit(1); // 1件でも登録できなければ、呼んだ側に分かるように
     break;
   }
   case 'list': {

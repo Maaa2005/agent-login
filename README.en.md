@@ -102,7 +102,7 @@ Export your passwords as CSV from your password manager, then run this in your o
 agent-login import ~/Downloads/passwords.csv
 ```
 
-It lists the importable entries without showing any password, then asks which numbers to register (e.g. `1,3,5-7`, `all`, or empty to cancel) and asks for `yes` before writing. Only https logins are taken; app entries, http, empty passwords, duplicates and HTTP-auth entries are skipped, and existing names are never overwritten (a new name gets `-2`). A CSV with broken quotes, one that is not UTF-8, or one over 20MB is refused as a whole and nothing is registered (so that a shifted column cannot put a password into the ID field). One-time codes (TOTP) and notes in the CSV are not imported. Register only the sites you want the AI to use. The CSV contains every password in plain text, so delete it (and empty the Trash) when you are done.
+It lists the importable entries without showing any password, then asks which numbers to register (e.g. `1,3,5-7`, `all`, or empty to cancel) and asks for `yes` before writing. Only logins whose address starts with `https://` are taken (an address without it, such as `example.com`, is skipped too); app entries, non-login items such as notes and cards, http, empty passwords, duplicates and HTTP-auth entries are skipped, and existing names are never overwritten (a new name gets `-2`). A CSV with broken quotes, one that is not UTF-8, or one over 20MB is refused as a whole and nothing is registered (so that a shifted column cannot put a password into the ID field). One-time codes (TOTP) and notes in the CSV are not imported. Register only the sites you want the AI to use. Pressing Ctrl-D or Ctrl-C at a prompt ends without registering anything. If any entry fails to register, the exit code is 1. The CSV contains every password in plain text, so delete it (and empty the Trash) when you are done.
 
 The tests cover the Chrome, Firefox and Bitwarden export layouts. Other CSVs are read if the header row has a `url` (or `login_uri`) column and a `password` column.
 
@@ -126,7 +126,8 @@ Write CSS selectors in `~/.config/agent-login/sites.json` (all optional):
 - `login` says the keychain did not allow access: press "Always Allow" in the prompt. If that does not help, run `agent-login remove <name>` and then `add` again.
 - "HOME differs" appears: a launch with HOME set to somewhere other than your usual home does not receive passwords. Launch it with your usual HOME.
 - No Touch ID prompt appears: run `agent-login check` in your own terminal and see whether the prompt shows up.
-- `import` refuses the file: the quotes are broken, it is not UTF-8, or it is over 20MB. Export it again from your password manager.
+- `import` refuses the file: the quotes are broken, it is not UTF-8, it is over 20MB, the header row has no `url` and `password` columns, or it is empty. Export it again from your password manager. It also refuses to run from a pipe or another tool, so type it in your own terminal.
+- `import` skips everything: exports whose addresses do not start with `https://` cannot be imported.
 
 ## How it works
 
@@ -163,7 +164,7 @@ With fnm or nvm, `command -v node` may point to a temporary location. In that ca
 
 ## Tests
 
-`npm test` uses a synthetic password (random each run) against a local test site and checks the following (82 tests):
+`npm test` uses a synthetic password (random each run) against a local test site and checks the following (84 tests):
 
 - Controls: with masking turned off, the plaintext is found in snapshots, field values, console, network bodies, console log files and saved snapshot files (proves the detector works).
 - Real runs: for a plain form, a JS-submitted form, a page that copies the value, and concurrent tool calls, zero plaintext in agent responses and files.
@@ -173,7 +174,7 @@ With fnm or nvm, `command -v node` may point to a temporary location. In that ca
 - With two servers on the same profile, the later one opens its browser in another profile, can log in, and leaves no plaintext there either.
 - The data folder (`~/.cache/agent-login`) is set to owner-only (700), and anything created in it later is owner-only too.
 - `import` reads Chrome, Firefox and Bitwarden CSV layouts (quotes, commas and line breaks inside fields, CRLF, BOM), skips what it should, keeps generated names within what `login` accepts, registers only the chosen numbers after `yes`, and never prints a password, even in error messages. A CSV with broken quotes is refused as a whole. 20,000 entries with the same name still get distinct names. These tests use a fake Keychain.
-- Terminal output: the help lists every command, and the list table keeps its columns aligned even with full-width headers. Control characters and text-direction characters in names or IDs are shown in a visible form such as `\u001b`, emoji and combining characters are measured correctly, and 200,000 rows do not crash.
+- Terminal output: the help lists every command, and the list table keeps its columns aligned even with full-width headers. Control characters and text-direction characters in names or IDs are shown in a visible form such as `\u001b`, invisible characters such as zero-width spaces are shown the same way, emoji, combining characters and symbols such as ™ are measured correctly, and 200,000 rows do not crash.
 
 These tests use a test helper, not the real Keychain helper. The real helper and Touch ID approval are checked by hand.
 
