@@ -1,5 +1,5 @@
 // パスワード管理の書き出し（CSV）から、選んだ物だけをキーチェーンへ移す。
-// 対応: Chrome・Brave・Edge・Firefox・Safari/パスワード App・1Password・Bitwarden の CSV。
+// 試験した形: Chrome・Firefox・Bitwarden の CSV。ほかも url（login_uri）と password の列があれば読む。
 // パスワードは画面に一度も出さない。登録済みの名前は上書きしない。
 const SITE_RULE = /^[A-Za-z0-9._-]{1,64}$/; // server.mjs の login が受ける名前と同じ
 const COLUMNS = {
@@ -64,6 +64,7 @@ export function planImport(rows, existing = []) {
     const line = i + 2;
     const get = (k) => (col[k] >= 0 ? (r[col[k]] ?? '') : '');
     const skip = (reason) => skipped.push({ line, reason });
+    if (r.length !== head.length) return skip('列の数が合わない（引用符の崩れなど）');
     if (typeCol >= 0 && r[typeCol] && r[typeCol].trim().toLowerCase() !== 'login') return skip('ログイン以外の項目');
     if (realmCol >= 0 && (r[realmCol] ?? '').trim()) return skip('ブラウザの認証窓の項目');
     const password = get('password');

@@ -580,6 +580,8 @@ await scenario('CSV から取り込む', async () => {
     + `"https://www.mail.example.com","h","${P[2]}","",""\n"https://router.example.com","i","${P[3]}","Router",""\n`;
   const b = planImport(parseCsv(bw)), f = planImport(parseCsv(ff));
   record('取り込み: Bitwarden（複数の住所から https・メモ項目は飛ばす）と Firefox（題名なし・認証窓は飛ばす）', b.items.length === 1 && b.items[0].origin === 'https://bank.example.com' && b.skipped.length === 1 && f.items.length === 1 && f.items[0].site === 'mail-example-com' && f.skipped.length === 1, `${JSON.stringify(b.items.map((i) => i.origin))} ${JSON.stringify(f.items.map((i) => i.site))}`);
+  const shifted = planImport(parseCsv(`name,url,username,password\nBroken,https://x.example.com/,"j,${P[0]},extra\nOk,https://ok.example.com/,k,${P[1]}\n`));
+  record('取り込み: 列の数が合わない行（引用符の崩れ）は飛ばし、一覧にも名前にも値が出ない', shifted.skipped.some((s) => s.reason.startsWith('列の数')) && shifted.items.every((i) => !P.some((p) => i.site.includes(p.toLowerCase()) || i.user.includes(p))), shifted.skipped.map((s) => s.reason).join(" / "));
   let threw = false;
   try { planImport(parseCsv('a,b\n1,2\n')); } catch { threw = true; }
   record('取り込み: 住所とパスワードの列が無い CSV は断る', threw);

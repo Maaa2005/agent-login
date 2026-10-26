@@ -94,13 +94,14 @@ Other commands: `agent-login list` (registered sites), `agent-login remove <name
 
 ### Importing from a password manager
 
-Export your passwords as CSV from Chrome / Brave / Edge, Firefox, Safari / the Passwords app, 1Password or Bitwarden, then run this in your own terminal (it refuses piped input, so an AI cannot pick for you):
+Export your passwords as CSV from your password manager, then run this in your own terminal (it only runs when typed directly in a terminal; piped input is refused):
 
 ```sh
 agent-login import ~/Downloads/passwords.csv
 ```
 
-It lists the importable entries without showing any password, then asks which numbers to register (e.g. `1,3,5-7`, `all`, or empty to cancel) and asks for `yes` before writing. Only https logins are taken; app entries, http, empty passwords, duplicates and HTTP-auth entries are skipped, and existing names are never overwritten (a new name gets `-2`). One-time codes (TOTP) and notes in the CSV are not imported. Register only the sites you want the AI to use. The CSV contains every password in plain text, so delete it (and empty the Trash) when you are done.
+It lists the importable entries without showing any password, then asks which numbers to register (e.g. `1,3,5-7`, `all`, or empty to cancel) and asks for `yes` before writing. Only https logins are taken; app entries, http, empty passwords, duplicates and HTTP-auth entries are skipped, and existing names are never overwritten (a new name gets `-2`). One-time codes (TOTP) and notes in the CSV are not imported. Register only the sites you want the AI to use. The CSV contains every password in plain text, so delete it (and $1
+The tests cover the Chrome, Firefox and Bitwarden export layouts. Other CSVs are read if the header row has a `url` (or `login_uri`) column and a `password` column.
 
 ### Sites where the form fields are not found automatically
 
@@ -147,7 +148,7 @@ With fnm or nvm, `command -v node` may point to a temporary location. In that ca
 
 ## Tests
 
-`npm test` uses a synthetic password (random each run) against a local test site and checks the following (71 tests):
+`npm test` uses a synthetic password (random each run) against a local test site and checks the following (72 tests):
 
 - Controls: with masking turned off, the plaintext is found in snapshots, field values, console, network bodies, console log files and saved snapshot files (proves the detector works).
 - Real runs: for a plain form, a JS-submitted form, a page that copies the value, and concurrent tool calls, zero plaintext in agent responses and files.
