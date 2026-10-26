@@ -1,6 +1,8 @@
 // パスワード管理の書き出し（CSV）から、選んだ物だけをキーチェーンへ移す。
 // 試験した形: Chrome・Firefox・Bitwarden の CSV。ほかも url（login_uri）と password の列があれば読む。
 // パスワードは画面に一度も出さない。登録済みの名前は上書きしない。
+import { table } from './cli-view.mjs';
+
 const SITE_RULE = /^[A-Za-z0-9._-]{1,64}$/; // server.mjs の login が受ける名前と同じ
 const COLUMNS = {
   url: ['url', 'login_uri', 'website'],
@@ -110,8 +112,9 @@ export async function runImport({ text, keychain, ask, print }) {
   for (const [reason, n] of Object.entries(reasons)) print(`飛ばす: ${reason} ${n} 件`);
   if (!items.length) { print('登録できる項目がありません'); return { added: 0, failed: 0 }; }
 
-  print('登録できる項目（パスワードは表示しません）:');
-  items.forEach((it, i) => print(`  ${i + 1}. ${it.site} → ${it.origin}（${it.user || 'ID なし'}）${it.sameOrigin ? '  ※同じ住所が登録済み' : ''}`));
+  print(`登録できる項目 ${items.length} 件（パスワードは表示しません）:`);
+  const rows = items.map((it, i) => [`${i + 1}.`, it.site, it.origin, it.user || '（ID なし）', it.sameOrigin ? '※同じ住所が登録済み' : '']);
+  for (const line of table([['番号', '名前', 'サイト', 'ID', ''], ...rows])) print(line);
   let picked = null;
   for (let tries = 0; picked === null && tries < 3; tries++) {
     picked = parseSelection(await ask('AI に使わせる物の番号（例 1,3,5-7 / all / 空でやめる）: '), items.length);

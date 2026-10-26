@@ -90,7 +90,7 @@ If you use Claude Code and Codex at the same time, two servers run. A browser pr
 
 `~/.cache/agent-login` keeps page copies, screenshots and logs from after login (`output/`) and the browser's login state. Each start sets it to owner-only (700). `./uninstall.sh --purge` removes it when you no longer need it. `output/` is not cleaned up automatically. `remove` does not clear that site's login state (cookies). Screenshots or page copies that the AI saves under a file name it chooses go to the AI's working folder instead, and `--purge` does not remove them.
 
-Other commands: `agent-login list` (registered sites), `agent-login remove <name>` (delete), `serve --headless`. `serve --executable-path <path to Chrome>` also works, but in that mode the Keychain helper does not hand over passwords (login is unavailable).
+Other commands: `agent-login help` (list of commands; also shown with no arguments), `agent-login list` (registered sites; a table in the terminal, tab-separated when piped to another tool, as before), `agent-login remove <name>` (delete), `serve --headless`. `serve --executable-path <path to Chrome>` also works, but in that mode the Keychain helper does not hand over passwords (login is unavailable).
 
 ### Importing from a password manager
 
@@ -148,7 +148,7 @@ With fnm or nvm, `command -v node` may point to a temporary location. In that ca
 
 ## Tests
 
-`npm test` uses a synthetic password (random each run) against a local test site and checks the following (72 tests):
+`npm test` uses a synthetic password (random each run) against a local test site and checks the following (77 tests):
 
 - Controls: with masking turned off, the plaintext is found in snapshots, field values, console, network bodies, console log files and saved snapshot files (proves the detector works).
 - Real runs: for a plain form, a JS-submitted form, a page that copies the value, and concurrent tool calls, zero plaintext in agent responses and files.
@@ -158,6 +158,7 @@ With fnm or nvm, `command -v node` may point to a temporary location. In that ca
 - With two servers on the same profile, the later one opens its browser in another profile, can log in, and leaves no plaintext there either.
 - The data folder (`~/.cache/agent-login`) is set to owner-only (700), and anything created in it later is owner-only too.
 - `import` reads Chrome, Firefox and Bitwarden CSV layouts (quotes, commas and line breaks inside fields, CRLF, BOM), skips what it should, keeps generated names within what `login` accepts, registers only the chosen numbers after `yes`, and never prints a password, even in error messages. These tests use a fake Keychain.
+- Terminal output: the help lists every command, and the list table keeps its columns aligned even with full-width headers.
 
 These tests use a test helper, not the real Keychain helper. The real helper and Touch ID approval are checked by hand.
 

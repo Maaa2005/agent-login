@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { createAgentLogin, urlAllowed, keepPrivate } from '../src/server.mjs';
 import { createKeychain } from '../src/keychain.mjs';
 import { parseCsv, planImport, parseSelection, runImport } from '../src/import.mjs';
+import { width, table, helpText, sitesView } from '../src/cli-view.mjs';
 
 // 判定は英数字だけの芯（CORE）で行う。記号はどの書き方に化けても、芯はそのまま残る。
 const CORE = 'Zq7SYNTH' + Math.random().toString(36).slice(2, 10);
@@ -607,6 +608,19 @@ await scenario('CSV から取り込む', async () => {
   record('取り込み: 登録に失敗しても続け、件数を出す', bad.r.added === 2 && bad.r.failed === 1 && bad.out.includes('登録できませんでした: shop-inc'), JSON.stringify(bad.r));
   const all = [ok, ...none, bad].map((x) => x.out).join('\n');
   record('取り込み: 一覧・飛ばした理由・失敗の知らせのどこにもパスワードが出ない', P.every((p) => !all.includes(p)));
+});
+
+await scenario('端末の表示', async () => {
+  const help = helpText();
+  const cmds = ['list', 'add', 'import', 'remove', 'check', 'help', 'serve'];
+  record('説明: 全部のコマンドが載る', cmds.every((c) => new RegExp(`^  ${c}\\b`, 'm').test(help)), cmds.filter((c) => !help.includes(`  ${c}`)).join(','));
+  record('幅: 全角は2・英数字は1', width('abc') === 3 && width('名前') === 4 && width('（ID なし）') === 11, `${width('名前')} ${width('（ID なし）')}`);
+  const t = table([['名前', 'サイト'], ['github', 'https://github.com'], ['a', 'https://a.example']]);
+  const col = t.map((l) => width(l.slice(0, l.indexOf(l.includes('サイト') ? 'サイト' : 'https'))));
+  record('表: 2列目の始まりがそろう（全角の見出しでも）', new Set(col).size === 1, JSON.stringify(col));
+  const v = sitesView([{ site: 'zeta', origin: 'https://z.example' }, { site: 'alpha', origin: 'https://a.example' }]).split('\n');
+  record('一覧: 件数・見出し・名前の順', v[0] === '登録 2 件' && v[1].includes('名前') && v[2].includes('alpha') && v[3].includes('zeta'), JSON.stringify(v));
+  record('一覧: 空なら足し方を案内', sitesView([]).includes('add か import'));
 });
 
 for (const s of cleanup) await s.app.close().catch(() => {});

@@ -2,13 +2,14 @@
 // agent-login serve [--headless] [--executable-path <path>]   Claude Code から起動される MCP サーバー（--executable-path の起動ではキーチェーン係が値を渡さない）
 // agent-login add <site> <origin>                             ID とパスワードをキーチェーンに登録（パスワードは画面に出ない）
 // agent-login import <file.csv>                               パスワード管理の書き出し（CSV）から選んだ物だけ登録
-// agent-login list | remove <site> | check
+// agent-login list | remove <site> | check | help
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { keychain } from '../src/keychain.mjs';
 import { runImport } from '../src/import.mjs';
+import { helpText, sitesView } from '../src/cli-view.mjs';
 
 const [cmd, ...rest] = process.argv.slice(2);
 const configDir = join(homedir(), '.config', 'agent-login');
@@ -105,7 +106,10 @@ switch (cmd) {
     break;
   }
   case 'list': {
-    for (const r of await keychain.list()) console.log(`${r.site}\t${r.origin}`);
+    const rows = await keychain.list();
+    // 端末なら表、パイプ先（ほかの道具）には今までどおりタブ区切り。
+    if (process.stdout.isTTY) console.log(sitesView(rows));
+    else for (const r of rows) console.log(`${r.site}\t${r.origin}`);
     break;
   }
   case 'remove': {
@@ -119,7 +123,10 @@ switch (cmd) {
     console.log(r.ok ? 'この Mac で承認の画面を出せます' : `承認の画面を出せません: ${r.error}`);
     process.exit(r.ok ? 0 : 1);
   }
+  case undefined: case 'help': case '-h': case '--help':
+    console.log(helpText());
+    break;
   default:
-    console.error('使い方: agent-login serve | add <名前> <住所> | import <CSV> | list | remove <名前> | check');
+    console.error(`知らないコマンドです: ${cmd}\n\n${helpText()}`);
     process.exit(64);
 }
