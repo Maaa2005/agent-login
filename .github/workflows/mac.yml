@@ -1,0 +1,35 @@
+# 作者以外の Mac（GitHub の Mac）で、試験・入れる・入れた後の確認・消す、を通す。
+# 指紋の承認（agent-login check と本物のログイン）は、指紋の読み取り機が無いので確かめない。
+name: mac
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-26, macos-15-intel]
+        node: [20, 24]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: sw_vers && uname -m && node -v
+      - run: npm ci --no-audit --no-fund
+      - run: npm test
+      - name: install
+        run: ./install.sh
+      - name: install-check
+        run: sh tests/install-check.sh
+      - name: uninstall
+        # 消す前の yes は端末からしか読まないので、expect で端末を用意して答える。
+        run: |
+          expect -c 'set timeout 120; spawn ./uninstall.sh; expect "yes"; send "yes\r"; expect eof; catch wait r; exit [lindex $r 3]'
+          test ! -e /opt/agent-login && test ! -e /usr/local/bin/agent-login

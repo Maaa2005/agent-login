@@ -75,9 +75,27 @@ file -b "$NODE_FROM" | grep -q '^Mach-O' || die "node の本体が見つかり�
 "$NODE_FROM" -e 'process.exit(+process.versions.node.split(".")[0] >= 20 ? 0 : 1)' 2>/dev/null \
   || die "この node は古すぎます（v20 以上が必要）: $NODE_FROM"
 # 署名し直した node は Mac 標準以外の部品を読めなくなる。Homebrew 版などは断る。
-otool -L "$NODE_FROM" | awk '/^\t/ {print $1}' | while read -r lib; do
-  case "$lib" in /usr/lib/*|/System/*) ;; *) exit 1 ;; esac
-done || die "この node は Mac 標準以外の部品に頼っています（Homebrew 版など）。nodejs.org 版か fnm・nvm の node を使ってください: $NODE_FROM"
+only_mac_libs() {
+  otool -L "$1" 2>/dev/null | awk '/^\t/ {print $1}' | while read -r lib; do
+    case "$lib" in /usr/lib/*|/System/*) ;; *) exit 1 ;; esac
+  done
+}
+if ! only_mac_libs "$NODE_FROM"; then
+  # 断るだけでなく、この Mac に既にある使える node（nodejs.org 版・nvm・fnm）を探して、打つ形を見せる。
+  alt=
+  for c in /usr/local/bin/node "$HOME"/.nvm/versions/node/v*/bin/node \
+    "$HOME"/.local/share/fnm/node-versions/v*/installation/bin/node \
+    "$HOME/Library/Application Support/fnm/node-versions"/v*/installation/bin/node; do
+    [ -x "$c" ] && file -b "$c" | grep -q '^Mach-O' || continue
+    "$c" -e 'process.exit(+process.versions.node.split(".")[0] >= 20 ? 0 : 1)' 2>/dev/null || continue
+    only_mac_libs "$c" || continue
+    alt=$c
+  done
+  [ -n "$alt" ] && die "この node は Mac 標準以外の部品に頼っています（Homebrew 版など）: $NODE_FROM
+この Mac にある使える node で入れるには: AGENT_LOGIN_NODE=\"$alt\" ./install.sh"
+  die "この node は Mac 標準以外の部品に頼っています（Homebrew 版など）: $NODE_FROM
+nodejs.org の Mac 版（v20 以上）か fnm・nvm の node を入れてから、もう一度実行してください"
+fi
 
 # ---- 組み立て（自分の権限で、使い捨ての場所に） ----
 STAGE="$(mktemp -d "${TMPDIR:-/tmp}/agent-login-install.XXXXXX")"
